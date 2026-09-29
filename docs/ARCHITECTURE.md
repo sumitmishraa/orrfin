@@ -24,9 +24,19 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `backend/app/main.py` | App factory, CORS, `/health` |
 | `backend/app/config.py` | All settings, read from env / repo-root `.env` |
 | `backend/app/db.py` | SQLAlchemy engine, session, `Base` with constraint naming convention |
+| `backend/app/models.py` | Every table in BUILD_PLAN §5 (+ `sessions`); money `NUMERIC`, statuses as CHECK constraints |
+| `backend/app/auth/` | Login (argon2), server-side sessions, `current_user` and role guards |
 | `backend/app/modules/` | Business modules: procurement, invoices, matching (pure), review, audit, sync |
+| `backend/app/modules/procurement/service.py` | Intake → routing → approval chain; every §9 rule lives in `decision_refusal` |
+| `backend/app/modules/sync/` | ERP pull (upsert by `erp_ref`, skip unchanged) and the read-only vendor/PO routes |
+| `backend/app/modules/audit/service.py` | `record_event` (hash-chained per entity) and `verify_chain` |
+| `backend/app/jobs.py`, `worker.py` | Postgres job queue (`SKIP LOCKED`, retries, stale-job recovery) and its worker process |
+| `backend/app/errors.py` | Business refusals (403/404/409/422) with plain-English reasons |
+| `backend/app/seed_demo.py` | Demo org, 5 users, 3 categories, 3 approval tiers (idempotent) |
 | `backend/app/ports/` | Interfaces: Extractor, ErpAdapter, FileStore, Clock |
-| `backend/app/adapters/` | Implementations of the ports; the only place ERPNext field names may appear |
+| `backend/app/adapters/` | Implementations of the ports; the only place ERPNext field names may appear (`erpnext.py` translates, `erpnext_fake.py` serves `seed/erpnext/`) |
+| `frontend/src/app/(app)/` | Logged-in pages: Inbox, Requests (list, new, detail), POs, Vendors; Invoices/Audit are placeholders |
+| `frontend/src/proxy.ts`, `next.config.ts` | Redirect to /login without a session cookie; `/api/*` is forwarded to FastAPI (same-origin cookie) |
 | `backend/alembic/` | Migrations (additive only during demo week) |
 | `backend/tests/` | `unit/`, `integration/` now; `contract/`, `failure/` later |
 | `frontend/src/styles/tokens.css` | Brand colours from `docs/BRAND.md` |
@@ -45,3 +55,4 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 
 ## Decisions
 - [ADR 0001](adr/0001-postgres-driver-pg8000.md): pg8000 Postgres driver (Windows blocks psycopg's DLL).
+- [ADR 0002](adr/0002-app-database-role.md): the app runs as the restricted `orrfin_app` role (`SET ROLE`), so it can't rewrite audit events.

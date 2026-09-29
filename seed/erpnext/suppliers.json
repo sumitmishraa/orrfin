@@ -1,0 +1,64 @@
+{
+  "data": [
+    {
+      "name": "Shreeji Office Supplies Pvt Ltd",
+      "supplier_name": "Shreeji Office Supplies Pvt Ltd",
+      "supplier_group": "Stationery",
+      "supplier_type": "Company",
+      "country": "India",
+      "gstin": "27AABCS4821K1Z9",
+      "gst_category": "Registered Regular",
+      "disabled": 0,
+      "docstatus": 0,
+      "modified": "2026-09-18 10:12:04.000000"
+    },
+    {
+      "name": "Kaveri IT Solutions LLP",
+      "supplier_name": "Kaveri IT Solutions LLP",
+      "supplier_group": "Hardware",
+      "supplier_type": "Company",
+      "country": "India",
+      "gstin": "29AAKFK3310P1ZY",
+      "gst_category": "Registered Regular",
+      "disabled": 0,
+      "docstatus": 0,
+      "modified": "2026-09-18 10:15:41.000000"
+    },
+    {
+      "name": "Northwind Networks India Pvt Ltd",
+      "supplier_name": "Northwind Networks India Pvt Ltd",
+      "supplier_group": "Hardware",
+      "supplier_type": "Company",
+      "country": "India",
+      "gstin": "07AADCN5566Q1ZQ",
+      "gst_category": "Registered Regular",
+      "disabled": 0,
+      "docstatus": 0,
+      "modified": "2026-09-18 10:19:02.000000"
+    },
+    {
+      "name": "Deccan Facility Services Pvt Ltd",
+      "supplier_name": "Deccan Facility Services Pvt Ltd",
+      "supplier_group": "Services",
+      "supplier_type": "Company",
+      "country": "India",
+      "gstin": "27AAECD9082R1ZS",
+      "gst_category": "Registered Regular",
+      "disabled": 0,
+      "docstatus": 0,
+      "modified": "2026-09-18 10:22:37.000000"
+    },
+    {
+      "name": "Sahyadri Print & Stationery",
+      "supplier_name": "Sahyadri Print & Stationery",
+      "supplier_group": "Stationery",
+      "supplier_type": "Company",
+      "country": "India",
+      "gstin": "27ABNPS1204H1ZO",
+      "gst_category": "Registered Regular",
+      "disabled": 0,
+      "docstatus": 0,
+      "modified": "2026-09-18 10:25:55.000000"
+    }
+  ]
+}

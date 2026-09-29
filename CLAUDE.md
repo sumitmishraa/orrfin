@@ -6,7 +6,7 @@ Orrfin is building a 7-day investor prototype: a P2P invoice-matching "Control G
 
 Build step by step with [docs/PROMPTS.md](docs/PROMPTS.md). At the start of every step, read [docs/PROGRESS.md](docs/PROGRESS.md) (the handoff log); at the end, append 8 lines or fewer to it. UI colours come from [docs/BRAND.md](docs/BRAND.md).
 
-Status: Step 1 (walking skeleton) done on 29 Sep; Step 2 (Bedrock spike) code done, live run waits on Bedrock model access; no business features yet. Update this line as milestones complete.
+Status: Steps 1, 3, 4, 5 done on 29 Sep (skeleton; login and roles; fake-ERPNext sync; intake-to-procure with approval chain). Step 2 (Bedrock spike) code done, live run waits on Bedrock model access. Update this line as milestones complete.
 
 ## Non-negotiables
 

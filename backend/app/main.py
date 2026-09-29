@@ -4,11 +4,16 @@ Business routers (procurement, invoices, review, audit, sync) are added here
 as later steps build them.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.auth.router import router as auth_router
 from app.config import get_settings
+from app.errors import DomainError
+from app.modules.procurement.router import router as procurement_router
+from app.modules.sync.router import router as sync_router
 
 
 class HealthResponse(BaseModel):
@@ -34,6 +39,14 @@ def create_app() -> FastAPI:
         # can't be caused by a database blip.
         return HealthResponse(status="ok")
 
+    @app.exception_handler(DomainError)
+    def domain_error(_request: Request, exc: DomainError) -> JSONResponse:
+        # A refused business action: same status code and plain-English reason as the rule.
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
+
+    app.include_router(auth_router)
+    app.include_router(procurement_router)
+    app.include_router(sync_router)
     return app
 
 

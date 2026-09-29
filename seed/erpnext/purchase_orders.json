@@ -1,0 +1,463 @@
+{
+  "data": [
+    {
+      "name": "PUR-ORD-2026-00001",
+      "supplier": "Shreeji Office Supplies Pvt Ltd",
+      "company": "Orrfin Demo Co",
+      "transaction_date": "2026-09-01",
+      "schedule_date": "2026-09-08",
+      "currency": "INR",
+      "status": "To Bill",
+      "docstatus": 1,
+      "per_received": 100.0,
+      "per_billed": 0,
+      "net_total": 46500,
+      "total_taxes_and_charges": 8370,
+      "grand_total": 54870,
+      "orrfin_ref": null,
+      "modified": "2026-09-01 16:30:00.000000",
+      "items": [
+        {
+          "name": "e5de76ad1f",
+          "idx": 1,
+          "item_code": "STAT-A4-75",
+          "item_name": "A4 copier paper 75 GSM (500 sheets)",
+          "description": "A4 copier paper 75 GSM (500 sheets)",
+          "gst_hsn_code": "4802",
+          "uom": "Ream",
+          "qty": 100,
+          "received_qty": 100,
+          "rate": 285,
+          "amount": 28500,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-09-08"
+        },
+        {
+          "name": "2a615ee2fb",
+          "idx": 2,
+          "item_code": "STAT-PEN-BLU50",
+          "item_name": "Ball pens, blue (box of 50)",
+          "description": "Ball pens, blue (box of 50)",
+          "gst_hsn_code": "9608",
+          "uom": "Box",
+          "qty": 40,
+          "received_qty": 40,
+          "rate": 450,
+          "amount": 18000,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-09-08"
+        }
+      ],
+      "taxes": [
+        {
+          "idx": 1,
+          "charge_type": "On Net Total",
+          "account_head": "Input Tax CGST - ODC",
+          "rate": 9,
+          "tax_amount": 4185,
+          "description": "CGST"
+        },
+        {
+          "idx": 2,
+          "charge_type": "On Net Total",
+          "account_head": "Input Tax SGST - ODC",
+          "rate": 9,
+          "tax_amount": 4185,
+          "description": "SGST"
+        }
+      ]
+    },
+    {
+      "name": "PUR-ORD-2026-00002",
+      "supplier": "Kaveri IT Solutions LLP",
+      "company": "Orrfin Demo Co",
+      "transaction_date": "2026-09-02",
+      "schedule_date": "2026-09-15",
+      "currency": "INR",
+      "status": "To Receive and Bill",
+      "docstatus": 1,
+      "per_received": 80.0,
+      "per_billed": 0,
+      "net_total": 441500,
+      "total_taxes_and_charges": 79470,
+      "grand_total": 520970,
+      "orrfin_ref": null,
+      "modified": "2026-09-02 16:30:00.000000",
+      "items": [
+        {
+          "name": "354b57e3a7",
+          "idx": 1,
+          "item_code": "IT-LAP-14-I5",
+          "item_name": "Laptop 14in, Core i5, 16 GB RAM, 512 GB SSD",
+          "description": "Laptop 14in, Core i5, 16 GB RAM, 512 GB SSD",
+          "gst_hsn_code": "8471",
+          "uom": "Nos",
+          "qty": 5,
+          "received_qty": 3,
+          "rate": 78500,
+          "amount": 392500,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-09-15"
+        },
+        {
+          "name": "cd449611bb",
+          "idx": 2,
+          "item_code": "IT-DOCK-USBC",
+          "item_name": "USB-C docking station",
+          "description": "USB-C docking station",
+          "gst_hsn_code": "8473",
+          "uom": "Nos",
+          "qty": 5,
+          "received_qty": 5,
+          "rate": 9800,
+          "amount": 49000,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-09-15"
+        }
+      ],
+      "taxes": [
+        {
+          "idx": 1,
+          "charge_type": "On Net Total",
+          "account_head": "Input Tax IGST - ODC",
+          "rate": 18,
+          "tax_amount": 79470,
+          "description": "IGST"
+        }
+      ]
+    },
+    {
+      "name": "PUR-ORD-2026-00003",
+      "supplier": "Northwind Networks India Pvt Ltd",
+      "company": "Orrfin Demo Co",
+      "transaction_date": "2026-09-05",
+      "schedule_date": "2026-09-30",
+      "currency": "INR",
+      "status": "To Receive and Bill",
+      "docstatus": 1,
+      "per_received": 0.0,
+      "per_billed": 0,
+      "net_total": 219000,
+      "total_taxes_and_charges": 39420,
+      "grand_total": 258420,
+      "orrfin_ref": null,
+      "modified": "2026-09-05 16:30:00.000000",
+      "items": [
+        {
+          "name": "00cb0fecda",
+          "idx": 1,
+          "item_code": "NET-AP-WIFI6",
+          "item_name": "Wi-Fi 6 access point",
+          "description": "Wi-Fi 6 access point",
+          "gst_hsn_code": "8517",
+          "uom": "Nos",
+          "qty": 10,
+          "received_qty": 0,
+          "rate": 14200,
+          "amount": 142000,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-09-30"
+        },
+        {
+          "name": "be28893171",
+          "idx": 2,
+          "item_code": "NET-SW-24POE",
+          "item_name": "24-port PoE switch",
+          "description": "24-port PoE switch",
+          "gst_hsn_code": "8517",
+          "uom": "Nos",
+          "qty": 2,
+          "received_qty": 0,
+          "rate": 38500,
+          "amount": 77000,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-09-30"
+        }
+      ],
+      "taxes": [
+        {
+          "idx": 1,
+          "charge_type": "On Net Total",
+          "account_head": "Input Tax IGST - ODC",
+          "rate": 18,
+          "tax_amount": 39420,
+          "description": "IGST"
+        }
+      ]
+    },
+    {
+      "name": "PUR-ORD-2026-00004",
+      "supplier": "Deccan Facility Services Pvt Ltd",
+      "company": "Orrfin Demo Co",
+      "transaction_date": "2026-09-01",
+      "schedule_date": "2026-09-30",
+      "currency": "INR",
+      "status": "To Bill",
+      "docstatus": 1,
+      "per_received": 100.0,
+      "per_billed": 0,
+      "net_total": 125000,
+      "total_taxes_and_charges": 22500,
+      "grand_total": 147500,
+      "orrfin_ref": null,
+      "modified": "2026-09-01 16:30:00.000000",
+      "items": [
+        {
+          "name": "605aabae3a",
+          "idx": 1,
+          "item_code": "SVC-HOUSEKEEP",
+          "item_name": "Housekeeping services, September 2026",
+          "description": "Housekeeping services, September 2026",
+          "gst_hsn_code": "9985",
+          "uom": "Month",
+          "qty": 1,
+          "received_qty": 1,
+          "rate": 125000,
+          "amount": 125000,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-09-30"
+        }
+      ],
+      "taxes": [
+        {
+          "idx": 1,
+          "charge_type": "On Net Total",
+          "account_head": "Input Tax CGST - ODC",
+          "rate": 9,
+          "tax_amount": 11250,
+          "description": "CGST"
+        },
+        {
+          "idx": 2,
+          "charge_type": "On Net Total",
+          "account_head": "Input Tax SGST - ODC",
+          "rate": 9,
+          "tax_amount": 11250,
+          "description": "SGST"
+        }
+      ]
+    },
+    {
+      "name": "PUR-ORD-2026-00005",
+      "supplier": "Sahyadri Print & Stationery",
+      "company": "Orrfin Demo Co",
+      "transaction_date": "2026-09-03",
+      "schedule_date": "2026-09-17",
+      "currency": "INR",
+      "status": "To Bill",
+      "docstatus": 1,
+      "per_received": 100.0,
+      "per_billed": 0,
+      "net_total": 27500,
+      "total_taxes_and_charges": 4950,
+      "grand_total": 32450,
+      "orrfin_ref": null,
+      "modified": "2026-09-03 16:30:00.000000",
+      "items": [
+        {
+          "name": "56cf56444c",
+          "idx": 1,
+          "item_code": "PRN-VCARD",
+          "item_name": "Visiting cards, 100 per box",
+          "description": "Visiting cards, 100 per box",
+          "gst_hsn_code": "4911",
+          "uom": "Box",
+          "qty": 20,
+          "received_qty": 20,
+          "rate": 650,
+          "amount": 13000,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-09-17"
+        },
+        {
+          "name": "327b2a29c4",
+          "idx": 2,
+          "item_code": "PRN-LETTERHEAD",
+          "item_name": "Letterheads, 500 sheets",
+          "description": "Letterheads, 500 sheets",
+          "gst_hsn_code": "4911",
+          "uom": "Ream",
+          "qty": 10,
+          "received_qty": 10,
+          "rate": 1450,
+          "amount": 14500,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-09-17"
+        }
+      ],
+      "taxes": [
+        {
+          "idx": 1,
+          "charge_type": "On Net Total",
+          "account_head": "Input Tax CGST - ODC",
+          "rate": 9,
+          "tax_amount": 2475,
+          "description": "CGST"
+        },
+        {
+          "idx": 2,
+          "charge_type": "On Net Total",
+          "account_head": "Input Tax SGST - ODC",
+          "rate": 9,
+          "tax_amount": 2475,
+          "description": "SGST"
+        }
+      ]
+    },
+    {
+      "name": "PUR-ORD-2026-00006",
+      "supplier": "Kaveri IT Solutions LLP",
+      "company": "Orrfin Demo Co",
+      "transaction_date": "2026-09-08",
+      "schedule_date": "2026-09-22",
+      "currency": "INR",
+      "status": "To Receive and Bill",
+      "docstatus": 1,
+      "per_received": 75.0,
+      "per_billed": 0,
+      "net_total": 135200,
+      "total_taxes_and_charges": 24336,
+      "grand_total": 159536,
+      "orrfin_ref": null,
+      "modified": "2026-09-08 16:30:00.000000",
+      "items": [
+        {
+          "name": "8b0d04de55",
+          "idx": 1,
+          "item_code": "IT-MON-27",
+          "item_name": "27in IPS monitor",
+          "description": "27in IPS monitor",
+          "gst_hsn_code": "8528",
+          "uom": "Nos",
+          "qty": 8,
+          "received_qty": 6,
+          "rate": 16900,
+          "amount": 135200,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-09-22"
+        }
+      ],
+      "taxes": [
+        {
+          "idx": 1,
+          "charge_type": "On Net Total",
+          "account_head": "Input Tax IGST - ODC",
+          "rate": 18,
+          "tax_amount": 24336,
+          "description": "IGST"
+        }
+      ]
+    },
+    {
+      "name": "PUR-ORD-2026-00007",
+      "supplier": "Shreeji Office Supplies Pvt Ltd",
+      "company": "Orrfin Demo Co",
+      "transaction_date": "2026-08-20",
+      "schedule_date": "2026-08-31",
+      "currency": "INR",
+      "status": "Closed",
+      "docstatus": 1,
+      "per_received": 75.0,
+      "per_billed": 0,
+      "net_total": 19100,
+      "total_taxes_and_charges": 3438,
+      "grand_total": 22538,
+      "orrfin_ref": null,
+      "modified": "2026-08-20 16:30:00.000000",
+      "items": [
+        {
+          "name": "a4acd0f51d",
+          "idx": 1,
+          "item_code": "STAT-BOXFILE",
+          "item_name": "Box files, laminated",
+          "description": "Box files, laminated",
+          "gst_hsn_code": "4820",
+          "uom": "Nos",
+          "qty": 200,
+          "received_qty": 150,
+          "rate": 95.5,
+          "amount": 19100,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-08-31"
+        }
+      ],
+      "taxes": [
+        {
+          "idx": 1,
+          "charge_type": "On Net Total",
+          "account_head": "Input Tax CGST - ODC",
+          "rate": 9,
+          "tax_amount": 1719,
+          "description": "CGST"
+        },
+        {
+          "idx": 2,
+          "charge_type": "On Net Total",
+          "account_head": "Input Tax SGST - ODC",
+          "rate": 9,
+          "tax_amount": 1719,
+          "description": "SGST"
+        }
+      ]
+    },
+    {
+      "name": "PUR-ORD-2026-00008",
+      "supplier": "Northwind Networks India Pvt Ltd",
+      "company": "Orrfin Demo Co",
+      "transaction_date": "2026-09-10",
+      "schedule_date": "2026-09-19",
+      "currency": "INR",
+      "status": "To Bill",
+      "docstatus": 1,
+      "per_received": 100.0,
+      "per_billed": 0,
+      "net_total": 251000,
+      "total_taxes_and_charges": 45180,
+      "grand_total": 296180,
+      "orrfin_ref": null,
+      "modified": "2026-09-10 16:30:00.000000",
+      "items": [
+        {
+          "name": "22a97eac00",
+          "idx": 1,
+          "item_code": "NET-FW-APPL",
+          "item_name": "Next-generation firewall appliance",
+          "description": "Next-generation firewall appliance",
+          "gst_hsn_code": "8517",
+          "uom": "Nos",
+          "qty": 1,
+          "received_qty": 1,
+          "rate": 215000,
+          "amount": 215000,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-09-19"
+        },
+        {
+          "name": "69273829fa",
+          "idx": 2,
+          "item_code": "NET-FW-AMC",
+          "item_name": "Firewall support and updates, 12 months",
+          "description": "Firewall support and updates, 12 months",
+          "gst_hsn_code": "9987",
+          "uom": "Nos",
+          "qty": 1,
+          "received_qty": 1,
+          "rate": 36000,
+          "amount": 36000,
+          "item_tax_template": "GST 18% - ODC",
+          "schedule_date": "2026-09-19"
+        }
+      ],
+      "taxes": [
+        {
+          "idx": 1,
+          "charge_type": "On Net Total",
+          "account_head": "Input Tax IGST - ODC",
+          "rate": 18,
+          "tax_amount": 45180,
+          "description": "IGST"
+        }
+      ]
+    }
+  ]
+}

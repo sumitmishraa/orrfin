@@ -1,0 +1,248 @@
+{
+  "data": [
+    {
+      "name": "MAT-PRE-2026-00001",
+      "supplier": "Shreeji Office Supplies Pvt Ltd",
+      "company": "Orrfin Demo Co",
+      "posting_date": "2026-09-07",
+      "status": "To Bill",
+      "docstatus": 1,
+      "modified": "2026-09-07 18:05:00.000000",
+      "items": [
+        {
+          "name": "e3de1e3a3b",
+          "idx": 1,
+          "item_code": "STAT-A4-75",
+          "item_name": "A4 copier paper 75 GSM (500 sheets)",
+          "qty": 100,
+          "received_qty": 100,
+          "rejected_qty": 0,
+          "uom": "Ream",
+          "rate": 285,
+          "purchase_order": "PUR-ORD-2026-00001",
+          "purchase_order_item": "e5de76ad1f"
+        },
+        {
+          "name": "185512bab5",
+          "idx": 2,
+          "item_code": "STAT-PEN-BLU50",
+          "item_name": "Ball pens, blue (box of 50)",
+          "qty": 40,
+          "received_qty": 40,
+          "rejected_qty": 0,
+          "uom": "Box",
+          "rate": 450,
+          "purchase_order": "PUR-ORD-2026-00001",
+          "purchase_order_item": "2a615ee2fb"
+        }
+      ]
+    },
+    {
+      "name": "MAT-PRE-2026-00002",
+      "supplier": "Kaveri IT Solutions LLP",
+      "company": "Orrfin Demo Co",
+      "posting_date": "2026-09-12",
+      "status": "To Bill",
+      "docstatus": 1,
+      "modified": "2026-09-12 18:05:00.000000",
+      "items": [
+        {
+          "name": "53f86f2fa4",
+          "idx": 1,
+          "item_code": "IT-LAP-14-I5",
+          "item_name": "Laptop 14in, Core i5, 16 GB RAM, 512 GB SSD",
+          "qty": 3,
+          "received_qty": 3,
+          "rejected_qty": 0,
+          "uom": "Nos",
+          "rate": 78500,
+          "purchase_order": "PUR-ORD-2026-00002",
+          "purchase_order_item": "354b57e3a7"
+        },
+        {
+          "name": "247757c7ee",
+          "idx": 2,
+          "item_code": "IT-DOCK-USBC",
+          "item_name": "USB-C docking station",
+          "qty": 5,
+          "received_qty": 5,
+          "rejected_qty": 0,
+          "uom": "Nos",
+          "rate": 9800,
+          "purchase_order": "PUR-ORD-2026-00002",
+          "purchase_order_item": "cd449611bb"
+        }
+      ]
+    },
+    {
+      "name": "MAT-PRE-2026-00003",
+      "supplier": "Deccan Facility Services Pvt Ltd",
+      "company": "Orrfin Demo Co",
+      "posting_date": "2026-09-30",
+      "status": "To Bill",
+      "docstatus": 1,
+      "modified": "2026-09-30 18:05:00.000000",
+      "items": [
+        {
+          "name": "42589f9e31",
+          "idx": 1,
+          "item_code": "SVC-HOUSEKEEP",
+          "item_name": "Housekeeping services, September 2026",
+          "qty": 1,
+          "received_qty": 1,
+          "rejected_qty": 0,
+          "uom": "Month",
+          "rate": 125000,
+          "purchase_order": "PUR-ORD-2026-00004",
+          "purchase_order_item": "605aabae3a"
+        }
+      ]
+    },
+    {
+      "name": "MAT-PRE-2026-00004",
+      "supplier": "Sahyadri Print & Stationery",
+      "company": "Orrfin Demo Co",
+      "posting_date": "2026-09-09",
+      "status": "To Bill",
+      "docstatus": 1,
+      "modified": "2026-09-09 18:05:00.000000",
+      "items": [
+        {
+          "name": "266c88babd",
+          "idx": 1,
+          "item_code": "PRN-VCARD",
+          "item_name": "Visiting cards, 100 per box",
+          "qty": 10,
+          "received_qty": 10,
+          "rejected_qty": 0,
+          "uom": "Box",
+          "rate": 650,
+          "purchase_order": "PUR-ORD-2026-00005",
+          "purchase_order_item": "56cf56444c"
+        }
+      ]
+    },
+    {
+      "name": "MAT-PRE-2026-00005",
+      "supplier": "Sahyadri Print & Stationery",
+      "company": "Orrfin Demo Co",
+      "posting_date": "2026-09-16",
+      "status": "To Bill",
+      "docstatus": 1,
+      "modified": "2026-09-16 18:05:00.000000",
+      "items": [
+        {
+          "name": "b41fdc3969",
+          "idx": 1,
+          "item_code": "PRN-VCARD",
+          "item_name": "Visiting cards, 100 per box",
+          "qty": 10,
+          "received_qty": 10,
+          "rejected_qty": 0,
+          "uom": "Box",
+          "rate": 650,
+          "purchase_order": "PUR-ORD-2026-00005",
+          "purchase_order_item": "56cf56444c"
+        },
+        {
+          "name": "4635fa99d3",
+          "idx": 2,
+          "item_code": "PRN-LETTERHEAD",
+          "item_name": "Letterheads, 500 sheets",
+          "qty": 10,
+          "received_qty": 10,
+          "rejected_qty": 0,
+          "uom": "Ream",
+          "rate": 1450,
+          "purchase_order": "PUR-ORD-2026-00005",
+          "purchase_order_item": "327b2a29c4"
+        }
+      ]
+    },
+    {
+      "name": "MAT-PRE-2026-00006",
+      "supplier": "Kaveri IT Solutions LLP",
+      "company": "Orrfin Demo Co",
+      "posting_date": "2026-09-20",
+      "status": "To Bill",
+      "docstatus": 1,
+      "modified": "2026-09-20 18:05:00.000000",
+      "items": [
+        {
+          "name": "126b9ad857",
+          "idx": 1,
+          "item_code": "IT-MON-27",
+          "item_name": "27in IPS monitor",
+          "qty": 6,
+          "received_qty": 6,
+          "rejected_qty": 0,
+          "uom": "Nos",
+          "rate": 16900,
+          "purchase_order": "PUR-ORD-2026-00006",
+          "purchase_order_item": "8b0d04de55"
+        }
+      ]
+    },
+    {
+      "name": "MAT-PRE-2026-00007",
+      "supplier": "Shreeji Office Supplies Pvt Ltd",
+      "company": "Orrfin Demo Co",
+      "posting_date": "2026-08-30",
+      "status": "To Bill",
+      "docstatus": 1,
+      "modified": "2026-08-30 18:05:00.000000",
+      "items": [
+        {
+          "name": "4a7f90679a",
+          "idx": 1,
+          "item_code": "STAT-BOXFILE",
+          "item_name": "Box files, laminated",
+          "qty": 150,
+          "received_qty": 150,
+          "rejected_qty": 0,
+          "uom": "Nos",
+          "rate": 95.5,
+          "purchase_order": "PUR-ORD-2026-00007",
+          "purchase_order_item": "a4acd0f51d"
+        }
+      ]
+    },
+    {
+      "name": "MAT-PRE-2026-00008",
+      "supplier": "Northwind Networks India Pvt Ltd",
+      "company": "Orrfin Demo Co",
+      "posting_date": "2026-09-18",
+      "status": "To Bill",
+      "docstatus": 1,
+      "modified": "2026-09-18 18:05:00.000000",
+      "items": [
+        {
+          "name": "d089f098ac",
+          "idx": 1,
+          "item_code": "NET-FW-APPL",
+          "item_name": "Next-generation firewall appliance",
+          "qty": 1,
+          "received_qty": 1,
+          "rejected_qty": 0,
+          "uom": "Nos",
+          "rate": 215000,
+          "purchase_order": "PUR-ORD-2026-00008",
+          "purchase_order_item": "22a97eac00"
+        },
+        {
+          "name": "1b072227e3",
+          "idx": 2,
+          "item_code": "NET-FW-AMC",
+          "item_name": "Firewall support and updates, 12 months",
+          "qty": 1,
+          "received_qty": 1,
+          "rejected_qty": 0,
+          "uom": "Nos",
+          "rate": 36000,
+          "purchase_order": "PUR-ORD-2026-00008",
+          "purchase_order_item": "69273829fa"
+        }
+      ]
+    }
+  ]
+}

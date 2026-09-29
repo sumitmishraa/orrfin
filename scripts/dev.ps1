@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Start or stop the local Orrfin stack: Postgres (Docker), API (port 8000), web (port 3000).
+  Start or stop the local Orrfin stack: Postgres (Docker), API (port 8000), job worker, web (port 3000).
 
 .DESCRIPTION
   Local-first development, BUILD_PLAN section 3. First run also creates .env from
@@ -75,7 +75,7 @@ function Start-DockerEngine {
 function Stop-AppProcesses {
     if (-not (Test-Path $PidFile)) { return }
     $saved = Get-Content $PidFile -Raw | ConvertFrom-Json
-    foreach ($name in 'api', 'web') {
+    foreach ($name in 'api', 'worker', 'web') {
         $id = $saved.$name
         if ($id -and (Get-Process -Id $id -ErrorAction SilentlyContinue)) {
             # /T kills the whole tree: uvicorn's reloader child and npm's node child.
@@ -145,15 +145,24 @@ if (-not (Test-Path $VenvPy)) {
     Invoke-Native 'Creating the Python environment failed (is Python 3.12 installed?).' {
         & py -3.12 -m venv (Join-Path $Backend '.venv')
     }
+}
+# Reinstall backend packages whenever pyproject.toml changes (a later step may add a dependency).
+$PipStamp = Join-Path $StateDir 'pip.stamp'
+$Pyproject = Join-Path $Backend 'pyproject.toml'
+if (-not (Test-Path $PipStamp) -or (Get-Item $Pyproject).LastWriteTime -gt (Get-Item $PipStamp).LastWriteTime) {
+    Write-Host 'Installing backend packages...'
     Invoke-Native 'Installing backend packages failed.' {
         & $VenvPy -m pip install --quiet -e "$Backend[dev]"
     }
+    Set-Content $PipStamp (Get-Date -Format o)
 }
 
-Write-Host 'Applying database migrations...'
+Write-Host 'Applying database migrations and demo data...'
 Push-Location $Backend
 try {
     Invoke-Native 'alembic upgrade head failed.' { & $VenvPy -m alembic upgrade head }
+    # Safe to repeat: existing demo users and categories are left untouched.
+    Invoke-Native 'Loading demo data failed.' { & $VenvPy -m app.seed_demo }
 } finally { Pop-Location }
 
 if (-not (Test-Path (Join-Path $Frontend 'node_modules'))) {
@@ -177,15 +186,23 @@ $api = Start-Process -FilePath $VenvPy -WorkingDirectory $Backend -WindowStyle H
 $web = Start-Process -FilePath 'npm.cmd' -WorkingDirectory $Frontend -WindowStyle Hidden -PassThru `
     -ArgumentList 'run', 'dev', '--', '--port', "$WebPort" `
     -RedirectStandardOutput (Join-Path $StateDir 'web.log') -RedirectStandardError (Join-Path $StateDir 'web.err.log')
-@{ api = $api.Id; web = $web.Id } | ConvertTo-Json | Set-Content $PidFile
+# The worker runs background jobs such as "Sync from ERP" (BUILD_PLAN §4).
+$worker = Start-Process -FilePath $VenvPy -WorkingDirectory $Backend -WindowStyle Hidden -PassThru `
+    -ArgumentList '-m', 'app.worker' `
+    -RedirectStandardOutput (Join-Path $StateDir 'worker.log') -RedirectStandardError (Join-Path $StateDir 'worker.err.log')
+@{ api = $api.Id; worker = $worker.Id; web = $web.Id } | ConvertTo-Json | Set-Content $PidFile
 
 $apiUp = Wait-ForUrl 'http://localhost:8000/health' 60
 $webUp = Wait-ForUrl "http://localhost:$WebPort" 120
+# The worker has no URL to wait for; a dead worker means "Sync from ERP" jobs would never run.
+$workerUp = -not $worker.HasExited
 
 Write-Host ''
 if ($apiUp) { Write-Host 'API  ready:  http://localhost:8000/health   (docs: http://localhost:8000/docs)' }
 else        { Write-Host 'API  did not start. See .dev\api.err.log' }
+if ($workerUp) { Write-Host 'Worker running (background jobs such as Sync from ERP).' }
+else           { Write-Host "Worker stopped (exit code $($worker.ExitCode)). See .dev\worker.err.log" }
 if ($webUp) { Write-Host "Web  ready:  http://localhost:$WebPort" }
 else        { Write-Host 'Web  did not start. See .dev\web.err.log' }
 Write-Host 'Stop everything with: .\scripts\dev.ps1 -Stop'
-if (-not ($apiUp -and $webUp)) { exit 1 }
+if (-not ($apiUp -and $webUp -and $workerUp)) { exit 1 }

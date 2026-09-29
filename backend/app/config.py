@@ -27,8 +27,21 @@ class Settings(BaseSettings):
     # postgresql+pg8000://user:password@localhost:5432/orrfin
     database_url: str = "postgresql+pg8000://orrfin@localhost:5432/orrfin"
 
+    # Restricted Postgres role the app switches to after connecting (docs/adr/0002).
+    # Empty string disables the switch (never do that outside a one-off admin script).
+    db_app_role: str = "orrfin_app"
+
     # The Next.js dev server is the only browser origin allowed to call the API.
     cors_origins: list[str] = ["http://localhost:3000"]
+
+    # Login session (§3, §9): server-side row, opaque token in an HttpOnly cookie.
+    session_cookie_name: str = "orrfin_session"
+    session_hours: int = 12
+    # Browsers only send Secure cookies over HTTPS; local development is plain HTTP.
+    session_cookie_secure: bool = False
+
+    # Where the fake ERPNext adapter reads its JSON fixtures (Step 4); relative to the repo root.
+    erp_fixtures_dir: str = "seed/erpnext"
 
 
 @lru_cache
