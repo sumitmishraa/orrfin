@@ -43,7 +43,8 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `frontend/src/app/globals.css` | Maps brand tokens to Tailwind + shadcn/ui theme names |
 | `frontend/src/components/ui/` | shadcn/ui components |
 | `backend/scripts/` | One-off tools: `make_sample_invoice.py` (synthetic GST PDF), `bedrock_spike.py` (Step 2 Bedrock proof) |
-| `seed/invoices/` | Synthetic invoice PDFs, each with a ground-truth `.expected.json` |
+| `seed/invoices/` | The single Step 2 Bedrock-spike invoice and its ground-truth `.expected.json` |
+| `evals/extraction/` | 12 evaluation invoices tied to the Step 4 POs, each with an answer key (built by `backend/scripts/make_eval_invoices.py`; table in `docs/DEMO_DATA.md`) |
 | `scripts/dev.ps1` | Start/stop the local stack |
 | `docs/adr/` | Short records of significant decisions |
 

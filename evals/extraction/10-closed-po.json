@@ -1,0 +1,39 @@
+{
+  "file": "10-closed-po.pdf",
+  "scenario": "closed-po",
+  "title": "Invoice against a closed PO",
+  "what_it_tests": "PO-7 was closed in the ERP after 150 of 200 box files arrived; nothing more may be billed on it.",
+  "expected_extraction": {
+    "vendor_name": "Shreeji Office Supplies Pvt Ltd",
+    "vendor_gstin": "27AABCS4821K1Z9",
+    "buyer_gstin": "27AADCO7734M1ZX",
+    "invoice_no": "SOS/2026-27/0154",
+    "invoice_date": "2026-09-02",
+    "po_reference": "PUR-ORD-2026-00007",
+    "place_of_supply": "27",
+    "currency": "INR",
+    "lines": [
+      {
+        "description": "Box files, laminated",
+        "item_code": "STAT-BOXFILE",
+        "hsn": "4820",
+        "qty": "150",
+        "rate": "95.50",
+        "amount": "14325.00"
+      }
+    ],
+    "subtotal": "14325.00",
+    "cgst": "1289.25",
+    "sgst": "1289.25",
+    "igst": "0.00",
+    "total": "16903.50"
+  },
+  "expected_match": {
+    "outcome": "exception",
+    "exceptions": [
+      "PO_NOT_OPEN"
+    ],
+    "amount_at_risk": "16903.50",
+    "note": "The PO is closed. Whole invoice at risk."
+  }
+}

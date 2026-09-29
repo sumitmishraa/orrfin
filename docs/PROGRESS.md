@@ -4,7 +4,7 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 
 ## Current state
 - Step 0 (manual setup): Docker done; Bedrock access **pending**: founder opened an AWS support case (use-case form blocked); advised to file it as "Account and billing".
-- Steps 1, 3, 4, 5: done (29 Sep). Step 2: code done, live run blocked on Bedrock access. Next: Step 6 (synthetic invoices; no AI needed). Steps renumbered in v2.1 (15 steps).
+- Steps 1, 3, 4, 5: done (29 Sep). Step 2: code done, live run blocked on Bedrock access. Step 6 done. Next: Step 7 (upload + AI extraction: needs Bedrock, or the Anthropic API fallback). Steps renumbered in v2.1 (15 steps).
 
 ## Decisions so far
 - Plan: docs/BUILD_PLAN.md v2.1 (intake-to-procure + draft PO added 29 Sep). Prompts: docs/PROMPTS.md (15 steps).
@@ -39,3 +39,8 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 **Step 5 — intake-to-procure (29 Sep).** `modules/procurement/service.py` holds every §9 rule (`decision_refusal`); one audit event per state change. Pages: Inbox, Requests, New request, request page with status timeline, buyer panel, approve/reject/return, admin assign.
 - Verified: 50 pytest pass; tsc/lint/build clean; live walk through :3000 took a ₹2,40,000 laptop request to "approved · ready for PO" with requester 403, buyer 403, out-of-order 409.
 - Open: §9 tiers/categories still to be confirmed by the founder (§14 Q7). Tests take ~2 min (argon2 per login). Once, the worker died on launch with empty logs until `.dev\worker*.log` were recreated (OneDrive?); dev.ps1 now reports "Worker stopped" if it happens. CI not yet run on GitHub.
+
+**Step 6 — synthetic invoices + answer keys (29 Sep).** `backend/scripts/make_eval_invoices.py` → `evals/extraction/01..12-*.pdf` + `.json`, each billing a Step 4 PO (read from `seed/erpnext/`). Scenarios and expected results: `docs/DEMO_DATA.md`. "Same file twice" = upload 01 again (no extra PDF); the partial-receipt case uses two PDFs (04 then 05).
+- Answer key = `expected_extraction` (for the Step 7 AI eval) + `expected_match` (for Step 8; assumes number order and that only matched invoices count toward "invoiced to date"). Exception names include `GSTIN_INVALID` (§6 rule 7 has no code yet).
+- PDFs print "INR"/"Rs." (the built-in PDF font has no ₹ glyph). Injection PDF: visible grey note + hidden white copy.
+- Verified: `tests/contract/test_eval_invoices.py` (49 checks; 99 backend tests in total: PDFs open and show the key numbers, keys add up to the paisa, each scenario trips only its declared rule, derived from the ERP fixtures). `pypdf` added to dev deps.

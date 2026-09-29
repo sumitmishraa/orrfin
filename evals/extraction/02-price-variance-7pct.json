@@ -1,0 +1,39 @@
+{
+  "file": "02-price-variance-7pct.pdf",
+  "scenario": "price-variance-7pct",
+  "title": "Price variance of 7%",
+  "what_it_tests": "Visiting cards billed at 7% above the PO rate (tolerance is 2%).",
+  "expected_extraction": {
+    "vendor_name": "Sahyadri Print & Stationery",
+    "vendor_gstin": "27ABNPS1204H1ZO",
+    "buyer_gstin": "27AADCO7734M1ZX",
+    "invoice_no": "SPS/26-27/0412",
+    "invoice_date": "2026-09-18",
+    "po_reference": "PUR-ORD-2026-00005",
+    "place_of_supply": "27",
+    "currency": "INR",
+    "lines": [
+      {
+        "description": "Visiting cards, 100 per box",
+        "item_code": "PRN-VCARD",
+        "hsn": "4911",
+        "qty": "20",
+        "rate": "695.50",
+        "amount": "13910.00"
+      }
+    ],
+    "subtotal": "13910.00",
+    "cgst": "1251.90",
+    "sgst": "1251.90",
+    "igst": "0.00",
+    "total": "16413.80"
+  },
+  "expected_match": {
+    "outcome": "exception",
+    "exceptions": [
+      "PRICE_VARIANCE"
+    ],
+    "amount_at_risk": "910.00",
+    "note": "₹695.50 billed vs ₹650.00 on the PO, ×20 boxes."
+  }
+}

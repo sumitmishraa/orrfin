@@ -1,0 +1,39 @@
+{
+  "file": "08-igst-instead-of-cgst-sgst.pdf",
+  "scenario": "igst-instead-of-cgst-sgst",
+  "title": "IGST on a same-state supply",
+  "what_it_tests": "Vendor and buyer are both in Maharashtra (27), so CGST + SGST applies, but the invoice charges IGST.",
+  "expected_extraction": {
+    "vendor_name": "Sahyadri Print & Stationery",
+    "vendor_gstin": "27ABNPS1204H1ZO",
+    "buyer_gstin": "27AADCO7734M1ZX",
+    "invoice_no": "SPS/26-27/0419",
+    "invoice_date": "2026-09-19",
+    "po_reference": "PUR-ORD-2026-00005",
+    "place_of_supply": "27",
+    "currency": "INR",
+    "lines": [
+      {
+        "description": "Letterheads, 500 sheets",
+        "item_code": "PRN-LETTERHEAD",
+        "hsn": "4911",
+        "qty": "10",
+        "rate": "1450.00",
+        "amount": "14500.00"
+      }
+    ],
+    "subtotal": "14500.00",
+    "cgst": "0.00",
+    "sgst": "0.00",
+    "igst": "2610.00",
+    "total": "17110.00"
+  },
+  "expected_match": {
+    "outcome": "exception",
+    "exceptions": [
+      "TAX_TYPE_MISMATCH"
+    ],
+    "amount_at_risk": "2610.00",
+    "note": "IGST ₹2,610.00 charged where CGST + SGST should apply."
+  }
+}

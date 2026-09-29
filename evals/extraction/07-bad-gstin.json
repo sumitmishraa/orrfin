@@ -1,0 +1,40 @@
+{
+  "file": "07-bad-gstin.pdf",
+  "scenario": "bad-gstin",
+  "title": "Invalid vendor GSTIN",
+  "what_it_tests": "The printed GSTIN has the letter O instead of the digit 0, so it fails the GSTIN format and no longer equals the PO vendor's GSTIN.",
+  "expected_extraction": {
+    "vendor_name": "Deccan Facility Services Pvt Ltd",
+    "vendor_gstin": "27AAECD9O82R1ZS",
+    "buyer_gstin": "27AADCO7734M1ZX",
+    "invoice_no": "DFS/2026/0930",
+    "invoice_date": "2026-09-30",
+    "po_reference": "PUR-ORD-2026-00004",
+    "place_of_supply": "27",
+    "currency": "INR",
+    "lines": [
+      {
+        "description": "Housekeeping services, September 2026",
+        "item_code": "SVC-HOUSEKEEP",
+        "hsn": "9985",
+        "qty": "1",
+        "rate": "125000.00",
+        "amount": "125000.00"
+      }
+    ],
+    "subtotal": "125000.00",
+    "cgst": "11250.00",
+    "sgst": "11250.00",
+    "igst": "0.00",
+    "total": "147500.00"
+  },
+  "expected_match": {
+    "outcome": "exception",
+    "exceptions": [
+      "GSTIN_INVALID",
+      "VENDOR_MISMATCH"
+    ],
+    "amount_at_risk": "147500.00",
+    "note": "Printed 27AAECD9O82R1ZS; ERP has 27AAECD9082R1ZS. Whole invoice at risk."
+  }
+}

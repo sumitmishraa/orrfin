@@ -25,6 +25,8 @@ dev = [
     "httpx>=0.27,<1",
     # Generates synthetic invoice PDFs under seed/ (backend/scripts/make_sample_invoice.py).
     "reportlab>=4,<6",
+    # Reads the evaluation PDFs back in tests (tests/contract/test_eval_invoices.py).
+    "pypdf>=5,<7",
 ]
 
 [build-system]

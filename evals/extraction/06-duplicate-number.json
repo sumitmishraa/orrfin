@@ -1,0 +1,51 @@
+{
+  "file": "06-duplicate-number.pdf",
+  "scenario": "duplicate-number",
+  "title": "Duplicate invoice number",
+  "what_it_tests": "Invoice 01 retyped: the number is written SOS-2026-27-0201 but normalises to the same key, with the same total.",
+  "expected_extraction": {
+    "vendor_name": "Shreeji Office Supplies Pvt Ltd",
+    "vendor_gstin": "27AABCS4821K1Z9",
+    "buyer_gstin": "27AADCO7734M1ZX",
+    "invoice_no": "SOS-2026-27-0201",
+    "invoice_date": "2026-09-10",
+    "po_reference": "PUR-ORD-2026-00001",
+    "place_of_supply": "27",
+    "currency": "INR",
+    "lines": [
+      {
+        "description": "A4 copier paper 75 GSM (500 sheets)",
+        "item_code": "STAT-A4-75",
+        "hsn": "4802",
+        "qty": "100",
+        "rate": "285.00",
+        "amount": "28500.00"
+      },
+      {
+        "description": "Ball pens, blue (box of 50)",
+        "item_code": "STAT-PEN-BLU50",
+        "hsn": "9608",
+        "qty": "40",
+        "rate": "450.00",
+        "amount": "18000.00"
+      }
+    ],
+    "subtotal": "46500.00",
+    "cgst": "4185.00",
+    "sgst": "4185.00",
+    "igst": "0.00",
+    "total": "54870.00"
+  },
+  "expected_match": {
+    "outcome": "exception",
+    "exceptions": [
+      "DUPLICATE_BLOCKING",
+      "QTY_EXCEEDS_RECEIPT"
+    ],
+    "amount_at_risk": "54870.00",
+    "note": "Same GSTIN + normalised number + fiscal year + total as invoice 01.",
+    "depends_on": [
+      "01-clean-match.pdf"
+    ]
+  }
+}

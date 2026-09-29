@@ -1,0 +1,36 @@
+{
+  "file": "04-partial-receipt-first.pdf",
+  "scenario": "partial-receipt-first",
+  "title": "Partial receipt: first invoice",
+  "what_it_tests": "3 of 5 laptops received; this first invoice bills 2, which is within the receipt.",
+  "expected_extraction": {
+    "vendor_name": "Kaveri IT Solutions LLP",
+    "vendor_gstin": "29AAKFK3310P1ZY",
+    "buyer_gstin": "27AADCO7734M1ZX",
+    "invoice_no": "KITS/INV/2026/0861",
+    "invoice_date": "2026-09-13",
+    "po_reference": "PUR-ORD-2026-00002",
+    "place_of_supply": "27",
+    "currency": "INR",
+    "lines": [
+      {
+        "description": "Laptop 14in, Core i5, 16 GB RAM, 512 GB SSD",
+        "item_code": "IT-LAP-14-I5",
+        "hsn": "8471",
+        "qty": "2",
+        "rate": "78500.00",
+        "amount": "157000.00"
+      }
+    ],
+    "subtotal": "157000.00",
+    "cgst": "0.00",
+    "sgst": "0.00",
+    "igst": "28260.00",
+    "total": "185260.00"
+  },
+  "expected_match": {
+    "outcome": "matched",
+    "exceptions": [],
+    "amount_at_risk": "0.00"
+  }
+}
