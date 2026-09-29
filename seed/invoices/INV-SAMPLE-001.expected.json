@@ -1,0 +1,37 @@
+{
+  "vendor_name": "Shreeji Office Supplies Pvt Ltd",
+  "vendor_gstin": "27AABCS4821K1Z9",
+  "buyer_gstin": "27AADCO7734M1ZX",
+  "invoice_no": "SOS/2026-27/0187",
+  "invoice_date": "2026-09-22",
+  "po_reference": "PO-2026-0042",
+  "currency": "INR",
+  "lines": [
+    {
+      "description": "A4 copier paper 75 GSM (500 sheets)",
+      "hsn": "4802",
+      "qty": "50",
+      "rate": "285.00",
+      "amount": "14250.00"
+    },
+    {
+      "description": "Ball pens, blue (box of 50)",
+      "hsn": "9608",
+      "qty": "20",
+      "rate": "450.00",
+      "amount": "9000.00"
+    },
+    {
+      "description": "Box files, laminated",
+      "hsn": "4820",
+      "qty": "40",
+      "rate": "95.50",
+      "amount": "3820.00"
+    }
+  ],
+  "subtotal": "27070.00",
+  "cgst": "2436.30",
+  "sgst": "2436.30",
+  "igst": "0.00",
+  "total": "31942.60"
+}

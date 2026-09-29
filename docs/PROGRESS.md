@@ -3,8 +3,8 @@
 Each step appends 8 lines or fewer: what was built, how to view it, open issues. New sessions read this file instead of re-reading the codebase.
 
 ## Current state
-- Step 0 (manual setup): Docker done; Bedrock access **pending** (founder parked it on 29 Sep; Step 2 needs it).
-- Step 1: done (29 Sep). Next: Step 3 (Bedrock still pending; Steps 3-5 need no AI). Steps renumbered in v2.1 (15 steps).
+- Step 0 (manual setup): Docker done; Bedrock access **pending**: Anthropic use-case form not yet submitted (click-by-click steps in docs/spikes.md).
+- Step 1: done (29 Sep). Step 2: code done, live run blocked on the console form. Next: Step 3 (Bedrock still pending; Steps 3-5 need no AI). Steps renumbered in v2.1 (15 steps).
 
 ## Decisions so far
 - Plan: docs/BUILD_PLAN.md v2.1 (intake-to-procure + draft PO added 29 Sep). Prompts: docs/PROMPTS.md (15 steps).
@@ -25,3 +25,8 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 - Port 3000 is often used by the founder's other project (wrfitzz-store); use `-WebPort 3001` then.
 - Contrast: muted text darkened to #536a84 for WCAG AA (BRAND.md updated).
 - Open: CI not yet run on GitHub (no remote configured). Starlette warns that `httpx` test client is deprecated; harmless for now.
+
+**Step 2 — Bedrock spike, part 1 (29 Sep).** `backend/scripts/make_sample_invoice.py` → `seed/invoices/INV-SAMPLE-001.pdf` + `.expected.json` (fake vendor, valid-checksum GSTINs, 3 lines, CGST+SGST, ₹31,942.60). `backend/scripts/bedrock_spike.py` (AnthropicBedrock + CLI profile, PDF block, Pydantic structured output, Decimal diff vs ground truth, `--check-access`, `--routing-only`).
+- Model: `global.anthropic.claude-sonnet-5-5`. From ap-south-1, current Claude models exist only as `global.` profiles, so inference may run outside India (disclose).
+- Blocked: every call returns `400 Operation not allowed`. Cause: Anthropic use-case form not submitted (`--check-access`). Founder: follow docs/spikes.md as `orrfin-admin`, then rerun the spike and record the routed region.
+- Deps: `anthropic[bedrock]` (main), `reportlab` (dev). Offline check of schema + diff passed; the live extraction is still unverified.

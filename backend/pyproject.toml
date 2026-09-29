@@ -13,12 +13,16 @@ dependencies = [
     # Pure-Python driver: Windows Smart App Control blocks the psycopg binary DLL
     # on the founder's laptop (docs/adr/0001-postgres-driver-pg8000.md).
     "pg8000>=1.31,<2",
+    # Claude on Amazon Bedrock (BUILD_PLAN §3 AI row); the [bedrock] extra brings boto3.
+    "anthropic[bedrock]>=1.9,<2",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8,<9",
     "httpx>=0.27,<1",
+    # Generates synthetic invoice PDFs under seed/ (backend/scripts/make_sample_invoice.py).
+    "reportlab>=4,<6",
 ]
 
 [build-system]

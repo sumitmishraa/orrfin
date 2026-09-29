@@ -32,6 +32,8 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `frontend/src/styles/tokens.css` | Brand colours from `docs/BRAND.md` |
 | `frontend/src/app/globals.css` | Maps brand tokens to Tailwind + shadcn/ui theme names |
 | `frontend/src/components/ui/` | shadcn/ui components |
+| `backend/scripts/` | One-off tools: `make_sample_invoice.py` (synthetic GST PDF), `bedrock_spike.py` (Step 2 Bedrock proof) |
+| `seed/invoices/` | Synthetic invoice PDFs, each with a ground-truth `.expected.json` |
 | `scripts/dev.ps1` | Start/stop the local stack |
 | `docs/adr/` | Short records of significant decisions |
 
