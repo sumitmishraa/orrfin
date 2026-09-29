@@ -1,8 +1,8 @@
 # Orrfin P2P + Invoice-Matching Prototype: Build Plan v2
 
-**Status:** approved plan, not yet built. Nothing in this document exists as code yet.
-**Version:** v2 (26 Sep 2026). It replaces v1 after an engineering review scored v1 at 50/100.
-**Target:** a working investor demo on synthetic data within 7 days.
+**Status:** approved plan; Step 1 (walking skeleton) built. See `docs/PROGRESS.md`.
+**Version:** v2.1 (29 Sep 2026). v2 (26 Sep) replaced v1 after an engineering review scored v1 at 50/100. v2.1 adds the intake-to-procure workflow and full P2P (Orrfin drafts the PO), approved by the founder on 29 Sep; see "v2.1 changes" below.
+**Target:** a working investor demo on synthetic data. The pitch date moved later (v2.1) and is not yet fixed; build in `docs/PROMPTS.md` step order.
 **Not a target:** production use or real customer data. See section 12 for the gates that must be passed before a pilot.
 
 ---
@@ -24,30 +24,47 @@
 | 11 | IAM limited to one bucket, one secret and model invocation; Session Manager instead of open SSH; RDS backups confirmed; GitHub Actions CI | Operability and security basics. |
 | 12 | "Same stack as a $415M ERP" line dropped | Architecture isn't a moat, and the number is unverified. |
 
+**v2.1 changes (29 Sep 2026, approved by the founder):**
+
+| # | Change | Reason |
+|---|---|---|
+| 13 | **Intake-to-procure** workflow: anyone submits a need through an intake form; Orrfin routes it by category to a buyer, then through an **amount-based approval chain** | The product covers the whole P2P journey, starting at the request, not only invoices |
+| 14 | **Orrfin drafts the Purchase Order** in ERPNext after approval, through the same exactly-once outbox as bills. A human submits it in ERPNext. (Was a stretch goal.) | Full P2P inside Orrfin while ERPNext stays the official record |
+| 15 | New role `buyer`; new tables for categories, request lines and approval policies; the outbox also carries POs | Needed for routing, approval tiers and PO write-back |
+| 16 | Pitch moved later; schedule is by step, not by day | Scope grew by roughly three build steps |
+
+Still out of scope: vendor quotes/comparison, new-vendor onboarding requests, payments.
+
 ---
 
 ## 1. What we are building (one sentence)
 
-**Orrfin Control Gate:** a supplier invoice arrives. Orrfin reads it, checks it line by line against the ERP's purchase order and goods receipt, stops anything wrong with a plain-English reason, lets a named person decide, and only then writes a *draft* bill into the ERP. Every step is recorded in a tamper-evident trail.
+**Orrfin Control Gate:** a need is requested, routed and approved in Orrfin, which then drafts the purchase order in the ERP. When the supplier invoice arrives, Orrfin reads it, checks it line by line against the ERP's purchase order and goods receipt, stops anything wrong with a plain-English reason, lets a named person decide, and only then writes a *draft* bill into the ERP. Every step is recorded in a tamper-evident trail.
+
+It has two connected workflows:
+- **Intake-to-procure (P2P front half):** intake → routing → approval → draft PO → receipt.
+- **Invoice-to-pay-ready (P2P back half):** invoice → extraction → match → review → draft bill. Payment itself stays out of scope.
 
 **Demo workflow (end to end):**
-1. Purchase request raised and approved in Orrfin.
-2. The buyer creates the PO in ERPNext; Orrfin links the request to it.
-3. Goods receipt recorded in ERPNext.
-4. Orrfin pulls the PO and receipt.
-5. Invoice uploaded.
-6. AI extracts the fields; the finance user confirms them.
-7. Rules check the invoice against the PO and receipt, line by line.
-8. Clean invoices become *match-ready*; others go to the exception queue.
-9. A named reviewer approves or rejects.
-10. A draft Purchase Invoice is written to ERPNext, exactly once.
-11. The Control Graph replays the whole chain.
+1. **Intake:** a requester submits a need (category, items, estimated amount, needed-by date, cost centre, justification).
+2. **Routing:** Orrfin assigns it to the buyer who owns that category; the buyer completes it (vendor, item codes, rates).
+3. **Approval:** the amount-based approval chain runs (§9); segregation of duties is enforced on the server.
+4. **Draft PO:** Orrfin writes a draft Purchase Order to ERPNext, exactly once (§8). A human submits it in ERPNext.
+5. Goods receipt recorded in ERPNext.
+6. Orrfin pulls the submitted PO and the receipt.
+7. Invoice uploaded.
+8. AI extracts the fields; the finance user confirms them.
+9. Rules check the invoice against the PO and receipt, line by line.
+10. Clean invoices become *match-ready*; others go to the exception queue.
+11. A named reviewer approves or rejects.
+12. A draft Purchase Invoice is written to ERPNext, exactly once.
+13. The Control Graph replays the whole chain.
 
 **Hard boundaries:**
 - Synthetic data only.
 - No payments.
 - No GST filing.
-- No ledger posting. ERPNext drafts are submitted by a human inside ERPNext.
+- No ledger posting. ERPNext drafts (POs and bills) are submitted by a human inside ERPNext.
 - AI never decides whether an invoice matches.
 
 ---
@@ -57,8 +74,9 @@
 | Record | Owner | Orrfin's role |
 |---|---|---|
 | Vendor master, GSTIN | ERPNext | Read-only mirror (`erp_ref`, `erp_modified`) |
-| Purchase request, request approvals | **Orrfin** | Owns |
-| Purchase order | ERPNext | Read-only mirror; Orrfin links the request to the PO number. *(Stretch: Orrfin writes a draft PO through the same outbox, and a human submits it in ERPNext.)* |
+| Intake request (purchase request), its lines, routing and approvals | **Orrfin** | Owns |
+| Categories (which buyer owns which category) and approval policies (amount tiers) | **Orrfin** | Owns; configured per org |
+| Purchase order | ERPNext | Orrfin writes a **draft** PO through the outbox after the request is approved (§8); a human submits it in ERPNext. After that, Orrfin mirrors it read-only like any other PO. POs created directly in ERPNext are mirrored too. |
 | Goods receipt (ERPNext "Purchase Receipt") | ERPNext | Read-only mirror |
 | Invoice PDF, extracted fields, field edits | **Orrfin** | Owns; every edit is audited |
 | Match result, exceptions, review decisions | **Orrfin** | Owns; append-only |
@@ -106,7 +124,7 @@ Steps and prompts are in `docs/PROMPTS.md`.
 Browser ─HTTPS─► │ web (Next.js) ─► api (FastAPI)                                                   │
  login + roles   │                    ├─ modules: procurement │ invoices │ matching (pure)       │
                  │                    │           review │ audit │ sync                          │
-                 │                    ├─ worker: jobs table (extract, erp_pull, erp_push)       │
+                 │                    ├─ worker: jobs (extract, erp_pull, erp_push: PO, bill)   │
                  │                    └─ ports: Extractor │ ErpAdapter │ FileStore │ Clock       │
                  └─────────┬──────────────┬───────────────────┬────────────────────────────────┘
                            │              │                   │
@@ -118,6 +136,8 @@ Browser ─HTTPS─► │ web (Next.js) ─► api (FastAPI)                   
                                push = outbox: PENDING → SENT → CONFIRMED | FAILED | UNKNOWN
                                       UNKNOWN → look up (supplier, bill_no) before any retry
 ```
+
+The `procurement` module owns the intake-to-procure workflow: intake requests, routing, approval chains and the hand-off to the PO outbox.
 
 **Module rules (enforced in code review):**
 - `matching` imports no database, HTTP or AI code. It takes Pydantic objects and returns a `MatchResult` with a `rule_set_version`.
@@ -150,10 +170,14 @@ Every business table has `id (uuid)`, `org_id (uuid, not null, indexed)`, `creat
 
 | Table | Key columns |
 |---|---|
-| `orgs`, `users` | `users.role` ∈ {requester, approver, finance, admin}; `approval_limit NUMERIC` |
+| `orgs`, `users` | `users.role` ∈ {requester, buyer, approver, finance, admin}; `approval_limit NUMERIC`; `manager_id` (nullable, for the first approval step) |
 | `vendors` | `erp_ref`, `erp_modified`, `name`, `gstin`, `state_code` |
-| `purchase_requests`, `request_approvals` | `requested_by`, `amount`, `status`; approval stores `approver_id`, `decision`, `reason`, `decided_at` |
-| `purchase_orders`, `po_lines` | `erp_ref`, `erp_modified`, `vendor_id`, `status`, `request_id` (nullable link); lines: `item_code`, `hsn`, `qty`, `rate`, `tax_rate` |
+| `categories` *(v2.1)* | `name` (e.g. IT hardware, Office supplies, Services), `buyer_id` (the owning buyer), `active` |
+| `approval_policies` *(v2.1)* | `min_amount`, `max_amount` (nullable = no ceiling), `steps jsonb` (ordered roles, e.g. `["manager","finance"]`), `active`; the tier whose range contains the request amount applies |
+| `purchase_requests` *(extended in v2.1)* | `requested_by`, `category_id`, `title`, `justification`, `cost_center`, `needed_by date`, `amount` (sum of lines), `currency`, `assigned_buyer_id`, `suggested_vendor_id` (nullable), `vendor_id` (set by the buyer), `status` ∈ {draft, submitted, with_buyer, in_approval, returned, approved, rejected, po_drafted, po_open, cancelled} |
+| `request_lines` *(v2.1)* | `request_id`, `description`, `item_code` (nullable until the buyer sets it), `qty`, `est_rate`, `amount`, `hsn` |
+| `request_approvals` | `request_id`, `step` (1, 2, …), `required_role`, `approver_id`, `decision` ∈ {approve, reject, return}, `reason`, `decided_at` |
+| `purchase_orders`, `po_lines` | `erp_ref`, `erp_modified`, `vendor_id`, `status`, `request_id` (nullable link), `origin` ∈ {orrfin, erp} *(v2.1)*; lines: `item_code`, `hsn`, `qty`, `rate`, `tax_rate` |
 | `goods_receipts`, `grn_lines` | `erp_ref`, `po_line_id`, `qty_received` |
 | `documents` | `s3_key`, `sha256` (unique per org), `uploaded_by` |
 | `invoices`, `invoice_lines` | `vendor_gstin`, `invoice_no`, `invoice_no_norm`, `invoice_date`, `fiscal_year`, `subtotal`, `cgst`, `sgst`, `igst`, `total`, `status`; lines: `description`, `item_code`, `hsn`, `qty`, `rate`, `amount`, `po_line_id` (paired), `pairing_method` |
@@ -162,7 +186,7 @@ Every business table has `id (uuid)`, `org_id (uuid, not null, indexed)`, `creat
 | `match_results` | `invoice_id`, `rule_set_version`, `outcome` ∈ {matched, exception, stale}, `amount_at_risk`, `inputs_snapshot jsonb`, `rule_results jsonb` |
 | `review_decisions` | `invoice_id`, `reviewer_id`, `decision` ∈ {approve, reject, request_correction}, `reason` |
 | `jobs` | `kind`, `payload jsonb`, `status`, `attempts`, `max_attempts`, `run_after`, `last_error` |
-| `erp_outbox` | `idempotency_key` (unique), `invoice_id`, `state` ∈ {PENDING, SENT, CONFIRMED, FAILED, UNKNOWN}, `erp_doc_name`, `attempts`, `last_error` |
+| `erp_outbox` | `idempotency_key` (unique), `doc_type` ∈ {purchase_invoice, purchase_order} *(v2.1)*, `invoice_id` (nullable), `request_id` (nullable) — exactly one of the two is set, `state` ∈ {PENDING, SENT, CONFIRMED, FAILED, UNKNOWN}, `erp_doc_name`, `attempts`, `last_error` |
 | `audit_events` | `org_id`, `entity_type`, `entity_id`, `seq`, `actor_id`, `action`, `payload jsonb`, `prev_hash`, `hash`; unique (`entity_id`, `seq`) |
 
 **Database grants:** the application role gets `INSERT, SELECT` on `audit_events`, with no `UPDATE` or `DELETE`. Migrations run as a separate owner role.
@@ -239,6 +263,15 @@ The AI explanation receives **only** the `rule_results` JSON, never the document
 
 **Demo:** "Retry sync" on a confirmed bill shows *"already in ERPNext as PINV-xxxx, no duplicate created."*
 
+**Draft Purchase Orders (v2.1).** The same outbox and states, with a different lookup key, because a PO has no supplier invoice number:
+- **Setup:** in ERPNext → Customize Form → Purchase Order, add a custom field **`orrfin_ref`** (Data, **Unique**, read-only). It is the PO equivalent of the bill-number uniqueness check.
+- **Key:** `idempotency_key = sha256(org_id|request_id|"purchase_order")`, one PO per approved request.
+- **Trigger:** the final approval step, in one transaction: request `status = approved`, an `erp_outbox` row (`doc_type = purchase_order`, `PENDING`), a `jobs` row and the audit event.
+- **Push:** `POST /api/resource/Purchase Order` with docstatus 0 (draft), `supplier`, `schedule_date` = needed-by, the approved lines, and `orrfin_ref` = the key. On `CONFIRMED`, the request becomes `po_drafted`.
+- **UNKNOWN → lookup first:** `GET` Purchase Orders filtered on `orrfin_ref`. Found → `CONFIRMED`; not found → retry the POST. The unique field is the second safety net.
+- **After a human submits the draft in ERPNext,** the next pull sync sees it (`origin = orrfin`, linked by `request_id`) and the request becomes `po_open`.
+- **Demo:** "Retry sync" on a drafted PO shows *"already in ERPNext as PUR-ORD-xxxx, no duplicate created."*
+
 ---
 
 ## 9. Security baseline (demo level)
@@ -248,6 +281,19 @@ The AI explanation receives **only** the `rule_results` JSON, never the document
   - A requester cannot approve their own request.
   - The person who uploaded or edited an invoice cannot approve its exception.
   - An approval above the user's `approval_limit` is refused with 403.
+  - *(v2.1)* The buyer who completed a request cannot approve it.
+  - *(v2.1)* One person cannot approve two steps of the same request.
+  - *(v2.1)* Steps run in order; approving step 2 before step 1 is refused.
+- **Approval chain (v2.1), from `approval_policies`.** Demo defaults, to be confirmed by the founder:
+
+  | Request amount | Steps, in order |
+  |---|---|
+  | up to ₹50,000 | requester's manager |
+  | ₹50,000.01 – ₹5,00,000 | manager → finance |
+  | above ₹5,00,000 | manager → finance → admin |
+
+  A step's approver must hold the step's role (`manager` means the requester's `manager_id`) and have an `approval_limit` ≥ the amount. Reject ends the request; "return" sends it back to the requester with a reason. If the amount changes after approval has started, the chain restarts.
+- **Routing (v2.1):** on submit, the request goes to the buyer of its category (`categories.buyer_id`). A category with no buyer goes to an admin queue. The buyer sets the vendor, item codes and rates, then sends it into approval.
 - Every query is filtered by the session's `org_id`. A test proves org A cannot read org B's data. Database row-level security comes later.
 - Secrets live in AWS Secrets Manager (DB password, ERPNext API key/secret). The repo has no `.env` containing real values; only a `.env.example` is committed.
 - **IAM:**
@@ -313,30 +359,37 @@ Roughly $20–40 for the week. After the pitch, snapshot RDS, then stop or delet
 
 ---
 
-## 11. Seven-day schedule with acceptance tests
+## 11. Schedule by milestone, with acceptance tests
 
-Day 1 = Sat 26 Sep. Pitch around Fri 2 Oct. **If you fall behind, cut in this order:** stretch goals → request screen polish → Control Graph visuals. **Never cut:** matching, exception review with segregation of duties, outbox write-back, audit trail.
+*(v2.1)* The schedule runs by **step** (`docs/PROMPTS.md`), not by calendar day. Started Sat 26 Sep; Step 1 was done on 29 Sep. The pitch date is not fixed yet: set it once Step 9 passes, allowing about four more steps after that.
 
-| Day | Milestone | Done when (acceptance tests) |
+**ERPNext trial:** it lasts 14 days. Start it at Step 11 (not earlier), or budget for a paid Frappe Cloud plan, so it doesn't expire before the pitch.
+
+**If you fall behind, cut in this order:** stretch goals → Control Graph visuals → request screen polish. **Never cut:** intake routing with approval chain and segregation of duties, matching, exception review, outbox write-back (bills and POs), audit trail.
+
+| Steps | Milestone | Done when (acceptance tests) |
 |---|---|---|
-| **1** | **M0 Walking skeleton + spikes.**<br>• AWS A–E, GitHub repo, CI.<br>• FastAPI + Next.js + login deployed at `https://demo…`.<br>• ERPNext trial: set up Company, GST settings, 5 vendors, items, 8 POs, receipts; turn on uniqueness.<br>• **Spike 1:** create PO → receipt → draft Purchase Invoice through the ERPNext API by script.<br>• **Spike 2:** Bedrock call from Mumbai; record model ID and routed region. | Public URL shows the login page. CI is green. `alembic upgrade head` works on an empty DB. Spike notes saved in `docs/spikes.md`. |
-| **2** | **M1 Schema + ERP pull.**<br>• Full schema (section 5), DB grants, seed users with roles.<br>• ERPNext adapter pull: vendors, POs, receipts. | Contract tests against recorded ERPNext JSON pass. Running the pull twice leaves row counts unchanged. The audit role cannot `UPDATE` (test). |
-| **3** | **M2 Extraction.**<br>• Upload → S3 → job → Claude → schema and arithmetic validation → review form showing evidence text.<br>• 12-PDF evaluation set. | Eval report with field accuracy saved. Injection PDF cannot produce `matched` with wrong totals. Killing the worker mid-job and restarting completes the job. |
-| **4** | **M3 Matching engine** (section 6) + risk score + AI explanation from rule results only. | ≥14 pytest scenarios pass:<br>• clean match<br>• price variance<br>• over-receipt<br>• partial receipt, then a second invoice exceeding it (cumulative)<br>• duplicate key only<br>• duplicate key + total<br>• same file re-uploaded<br>• bad GSTIN<br>• IGST vs CGST mismatch<br>• vendor mismatch<br>• PO closed<br>• unpaired line<br>• ₹0.01 rounding accepted<br>• stale PO |
-| **5** | **M4 Review + segregation of duties + audit + UI.**<br>• Exception inbox ranked by ₹ at risk.<br>• Side-by-side PO / receipt / invoice view.<br>• Approve / reject / request correction.<br>• Request → approval screen.<br>• Control Graph timeline. | Tests: requester self-approval → 403; uploader approval → 403; over-limit → 403; org A cannot read org B → 404. Audit event count equals the number of state changes. Hash chain verifies. |
-| **6** | **M5 Outbox write-back** (section 8) + Trust page + UI polish. | **Failure-injection test:** the adapter's POST succeeds, then raises a timeout → the retry does a lookup → exactly **one** Purchase Invoice exists in ERPNext and the outbox row is `CONFIRMED`. Manual check in the ERPNext UI. |
-| **7** | **M6 Rehearse and freeze.** Security review, 3 rehearsals, backup video, tag `demo-final`. | Demo runs cleanly twice in a row on the public URL. Trust page wording matches section 13. RDS automated backups confirmed. |
+| 1–2 | **M0 Walking skeleton + Bedrock spike.** FastAPI + Next.js + Postgres locally, CI; a Bedrock call from Mumbai with the model ID and routed region recorded. | `dev.ps1` starts everything; `/health` ok; CI green; `alembic upgrade head` works on an empty DB; spike notes in `docs/spikes.md`. |
+| 3–4 | **M1 Schema + auth + ERP pull.** Full schema (§5 incl. v2.1 tables), DB grants, login with roles, seed users; fake ERPNext pull of vendors, POs and receipts. | Login works; wrong password fails; org A cannot read org B; the app role cannot `UPDATE` audit_events. Contract tests pass; running the pull twice leaves row counts unchanged. |
+| 5 | **M2 Intake-to-procure** *(v2.1)*. Intake form, category routing to the buyer, buyer completion, amount-based approval chain (§9), request timeline. | Tests: a request routes to its category's buyer; a no-buyer category goes to the admin queue; ₹40,000 needs 1 step, ₹2,00,000 needs 2, ₹6,00,000 needs 3; requester self-approval → 403; buyer approving their own completed request → 403; same person on two steps → 403; out-of-order step → 409; over-limit → 403; changing the amount restarts the chain; one audit event per state change. |
+| 6–7 | **M3 Extraction.** Upload → file store → job → Claude → schema and arithmetic validation → review form with evidence; 12-PDF evaluation set. | Eval report with field accuracy saved. The injection PDF cannot produce `matched` with wrong totals. Killing the worker mid-job and restarting completes the job. |
+| 8 | **M4 Matching engine** (§6) + risk score + AI explanation from rule results only. | ≥14 pytest scenarios pass: clean match; price variance; over-receipt; partial receipt then a second invoice exceeding it (cumulative); duplicate key only; duplicate key + total; same file re-uploaded; bad GSTIN; IGST vs CGST mismatch; vendor mismatch; PO closed; unpaired line; ₹0.01 rounding accepted; stale PO. |
+| 9–10 | **M5 Invoice review + controls + Control Graph + Trust page.** Exception inbox ranked by ₹ at risk; side-by-side PO / receipt / invoice; approve / reject / request correction; audit hash chain; Control Graph from intake to draft bill. | Tests: uploader approval → 403; over-limit → 403; org A cannot read org B → 404. Audit event count equals state changes; hash chain verifies. |
+| 11–13 | **M6 Live ERPNext + outbox write-back** (§8): draft bills **and** draft POs. | **Failure-injection tests, one per document type:** the POST succeeds, then the adapter raises a timeout → the retry does a lookup → exactly **one** Purchase Invoice / Purchase Order exists in ERPNext and the outbox row is `CONFIRMED`. Approved request → draft PO in ERPNext → submitted by a human → pulled back as `po_open`. Manual check in the ERPNext UI. |
+| 14–15 | **M7 Deploy, rehearse and freeze.** AWS deploy, security review, 3 rehearsals, backup video, tag `demo-final`. | Demo runs cleanly twice in a row on the public URL. Trust page wording matches §13. RDS automated backups confirmed. |
 
-**Stretch goals** (only after M5 passes):
+**Stretch goals** (only after M6 passes):
 - SAP Business Accelerator Hub sandbox read tab. It is read-only by SAP's design.
-- Draft PO write-back to ERPNext.
+- Vendor quotes (attach 1–3 quotes, pick one before the PO).
+- New-vendor onboarding request.
 - Dashboard charts.
 - Tally XML sample-file parser (labelled as a mock).
 
 **Human checkpoints:**
-- **Day 1:** an ERPNext/GST practitioner (or a CA) checks the ERPNext tax setup.
-- **Day 4:** a CA reviews the matching tolerances and rounding rule.
-- **Day 7:** the `ecc:security-review` skill plus a second human looks over auth and IAM before sharing the URL.
+- **Before Step 5:** the founder confirms the approval tiers and categories (§9 defaults).
+- **Before Step 11:** an ERPNext/GST practitioner (or a CA) checks the ERPNext tax setup and the `orrfin_ref` custom field.
+- **After Step 8:** a CA reviews the matching tolerances and rounding rule.
+- **Before sharing the URL:** the `ecc:security-review` skill plus a second human look over auth and IAM.
 
 ---
 
@@ -355,14 +408,16 @@ Day 1 = Sat 26 Sep. Pitch around Fri 2 Oct. **If you fall behind, cut in this or
 ## 13. Investor demo script (10 minutes) and claims policy
 
 1. The problem: 12 handoffs.
-2. Request raised and approved in Orrfin, linked to the ERP PO.
-3. Receipt recorded in ERPNext; Orrfin pulls it.
-4. Clean invoice → matched → approved → draft bill appears in ERPNext live.
-5. Bad invoice (7% over price, IGST where CGST+SGST applies, near-duplicate number) → exception with ₹ at risk and a plain-English reason.
-6. The requester tries to approve it → blocked (segregation of duties). The finance reviewer rejects it, with name and timestamp.
-7. "Retry sync" on the approved bill → "already in ERPNext, no duplicate."
-8. Control Graph replay.
+2. **Intake:** a requester asks for 5 laptops (₹2,40,000). Orrfin routes it to the IT buyer, who completes vendor and items.
+3. **Approval chain:** the requester tries to approve it → blocked. The manager, then finance, approve (two steps because of the amount).
+4. **Draft PO appears in ERPNext live;** a human submits it there. "Retry sync" → "already in ERPNext, no duplicate."
+5. Receipt recorded in ERPNext; Orrfin pulls it.
+6. Clean invoice → matched → approved → draft bill appears in ERPNext live.
+7. Bad invoice (7% over price, IGST where CGST+SGST applies, near-duplicate number) → exception with ₹ at risk and a plain-English reason. The finance reviewer rejects it, with name and timestamp.
+8. Control Graph replay: intake → approvals → PO → receipt → invoice → match → decision → draft bill.
 9. Trust page, roadmap (Tally agent, Zoho, SAP), the ask.
+
+*(v2.1: this is now about 12 minutes; trim step 7 or 8 if the slot is 10.)*
 
 **Say:**
 - "Controlled prototype on synthetic data; draft-only; not production."
@@ -382,10 +437,11 @@ Day 1 = Sat 26 Sep. Pitch around Fri 2 Oct. **If you fall behind, cut in this or
 
 1. Will any real invoice be shown? (If yes, section 12 gates apply now.)
 2. Is India-only AI processing a hard promise for pilots?
-3. Is the pitch date fixed? (The ERPNext trial ends around 9–10 Oct.)
+3. Is the pitch date fixed? *(29 Sep: moved later, date TBD. Start the ERPNext trial at Step 11 or budget for a paid plan.)*
 4. Solo build, or is any experienced engineer available? (Decides Next.js vs the htmx fallback.)
 5. Which ERP do the first design partners actually use?
 6. Do you control DNS for orrfin.ai?
+7. *(v2.1)* Are the §9 approval tiers (₹50,000 / ₹5,00,000) and demo categories (IT hardware, Office supplies, Professional services) right? Needed before Step 5.
 
 ---
 

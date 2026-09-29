@@ -2,6 +2,8 @@
 
 Copy one prompt at a time into Claude Code. Each prompt builds one small, testable piece and ends with something you can **see on your laptop**.
 
+*(v2.1, 29 Sep: added Step 5 "Intake-to-procure" and Step 13 "Draft POs into ERPNext". Later steps were renumbered; see BUILD_PLAN "v2.1 changes".)*
+
 ---
 
 ## How to use this file (and save credits)
@@ -17,11 +19,33 @@ Copy one prompt at a time into Claude Code. Each prompt builds one small, testab
 
 | What | Where |
 |---|---|
-| The app | http://localhost:3000 |
+| The app | http://localhost:3000 (or :3001 if you start with `-WebPort 3001`) |
 | The API and its interactive docs | http://localhost:8000/docs |
-| The ERPNext demo system (from Step 10) | your Frappe Cloud URL |
+| The ERPNext demo system (from Step 11) | your Frappe Cloud URL |
 
-**Starting and stopping everything:** after Step 1, run `.\scripts\dev.ps1` in the VS Code terminal to start everything, and `.\scripts\dev.ps1 -Stop` to stop it.
+**Starting and stopping everything:** run `.\scripts\dev.ps1` in the VS Code terminal to start everything, and `.\scripts\dev.ps1 -Stop` to stop it. If another project uses port 3000, add `-WebPort 3001`.
+
+**The steps at a glance:**
+
+| # | Step | Workflow |
+|---|---|---|
+| 1 | Skeleton ✅ | foundation |
+| 2 | Bedrock spike (AI reads an invoice) | invoice |
+| 3 | Database, login and roles | foundation |
+| 4 | Fake ERPNext: vendors, POs, receipts | P2P |
+| 5 | **Intake-to-procure** (new) | P2P |
+| 6 | Test invoices + answer key | invoice |
+| 7 | Upload + AI extraction | invoice |
+| 8 | Matching engine | invoice |
+| 9 | Exception inbox, approvals, audit | invoice |
+| 10 | Control Graph, Trust page, polish | both |
+| 11 | Live ERPNext read | both |
+| 12 | Draft bills into ERPNext (outbox) | invoice |
+| 13 | **Draft POs into ERPNext** (new) | P2P |
+| 14 | Deploy to AWS | both |
+| 15 | Final review and rehearsal | both |
+
+Step 2 needs Bedrock access. If that is still pending, do Steps 3–5 first; they need no AI.
 
 ---
 
@@ -29,9 +53,9 @@ Copy one prompt at a time into Claude Code. Each prompt builds one small, testab
 
 Do these once, in order. Tick each one off.
 
-- [ ] **Install Docker Desktop:** go to docker.com → Download for Windows → run the installer → keep "Use WSL 2" ticked → restart the PC → open Docker Desktop once and wait until it says "Engine running".
+- [x] **Install Docker Desktop:** go to docker.com → Download for Windows → run the installer → keep "Use WSL 2" ticked → restart the PC → open Docker Desktop once and wait until it says "Engine running".
 - [ ] **Create an AWS account and secure it:** follow BUILD_PLAN §10 **A** (MFA, the `orrfin-admin` user, a $50 budget, the Mumbai region).
-- [ ] **Turn on Claude in Bedrock:** BUILD_PLAN §10 **D**, steps 1–2. Enable Anthropic Claude in the Model catalog and try one message in the Playground.
+- [ ] **Turn on Claude in Bedrock:** BUILD_PLAN §10 **D**, steps 1–2. Enable Anthropic Claude in the Model catalog and try one message in the Playground. *(Pending since 29 Sep.)*
 - [ ] **Create a laptop-only AI key** (so the app on your laptop can call Bedrock):
   1. IAM → Users → **Create user** `orrfin-dev-laptop`. Do **not** tick console access.
   2. Permissions → **Attach policies directly** → `AmazonBedrockLimitedAccess`. If it isn't listed, choose Create policy and allow only `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`.
@@ -40,12 +64,13 @@ Do these once, in order. Tick each one off.
   5. In a terminal, run `aws configure`. Paste the two keys from the `.csv`, set the region to `ap-south-1`, and set the output to `json`.
   6. **Never paste these keys into chat or into any project file.**
 - [ ] **Create a free GitHub account**, and a **private** repository named `orrfin`.
-- [ ] **Paste your colours** into `docs/BRAND.md`.
+- [x] **Paste your colours** into `docs/BRAND.md`.
+- [ ] **Confirm the approval tiers and categories** in BUILD_PLAN §9 and §14 Q7 (before Step 5).
 - [ ] **Recommended, saves credits:** tell Claude "turn off GateGuard's routine checks". It currently makes Claude explain every command twice.
 
 ---
 
-## Step 1 — Project skeleton you can open in the browser
+## Step 1 — Project skeleton you can open in the browser ✅ done 29 Sep
 
 `/model sonnet` · **Skills:** `ecc:fastapi-patterns`, `ecc:docker-patterns`, `ecc:frontend-patterns`
 
@@ -94,11 +119,14 @@ Finish: update PROGRESS.md, commit "step 2: bedrock spike", reply ≤10 lines, i
 ```
 STEP 3 — Schema + auth. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §5 and §9.
 Use skills: ecc:postgres-patterns, ecc:database-migrations, ecc:tdd-workflow.
-- Alembic migration for every table in §5, with org_id, NUMERIC money, and the audit_events grants
-  (app role: INSERT/SELECT only).
-- Email + password login (argon2), session cookie, roles, approval_limit.
-- Seed script: 1 org, 4 users (requester, approver, finance, admin). Put the demo passwords in the README.
-- Frontend: a login page in brand colours, and a logged-in shell with navigation (Inbox, Invoices, Requests, POs, Audit).
+- Alembic migration for every table in §5 (including the v2.1 tables: categories, approval_policies, request_lines,
+  and the extended purchase_requests, request_approvals and erp_outbox), with org_id, NUMERIC money,
+  and the audit_events grants (app role: INSERT/SELECT only).
+- Email + password login (argon2), session cookie, roles (requester, buyer, approver, finance, admin), approval_limit, manager_id.
+- Seed script: 1 org; 5 users (requester whose manager is the approver, buyer, approver, finance, admin);
+  3 categories (IT hardware, Office supplies, Professional services) each owned by the buyer;
+  the 3 approval tiers from §9. Put the demo passwords in the README.
+- Frontend: a login page in brand colours, and a logged-in shell with navigation (Inbox, Requests, Invoices, POs, Audit).
 Tests first: login works; wrong password fails; a data query from another org's session is refused; the app role cannot UPDATE audit_events.
 Done when: tests pass and I can log in at localhost:3000 as each seeded user.
 Finish: PROGRESS.md, commit "step 3", reply ≤12 lines, including the demo logins.
@@ -125,29 +153,53 @@ Finish: PROGRESS.md, commit "step 4", reply ≤10 lines.
 
 ---
 
-## Step 5 — Test invoices and an answer key
+## Step 5 — Intake-to-procure: request, routing and approval chain (new in v2.1)
+
+`/model opus` · **Skills:** `ecc:tdd-workflow`, `ecc:fastapi-patterns`
+
+```
+STEP 5 — Intake-to-procure. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §1, §2, §5 (request tables) and §9 (approval chain, routing, SoD).
+Use skills: ecc:tdd-workflow, ecc:fastapi-patterns.
+Tests FIRST for every rule in §9 and the M2 acceptance tests in §11; then implement, in the procurement module.
+- Intake form (requester): category, title, justification, cost centre, needed-by date, lines (description, qty, estimated rate),
+  optional suggested vendor. Amount = sum of lines, Decimal only.
+- Routing: on submit, assign to the category's buyer; no buyer → admin queue. Buyer work queue: set vendor (from synced vendors),
+  item codes and rates, then "Send for approval".
+- Approval chain from approval_policies: steps in order, server-side SoD (self-approval, buyer approval, same person twice,
+  out of order, over limit), approve / reject / return with reason. Amount change restarts the chain.
+- Every status change writes its audit event in the same transaction.
+- UI: "New request" form; My requests; Buyer queue; Approvals inbox; a request page with a status timeline
+  (submitted → with buyer → step 1 → step 2 → approved). Approved requests show "Ready for PO" (the PO itself is drafted in Step 13).
+Done when: tests pass, and I can log in as requester → buyer → approver → finance and walk a ₹2,40,000 laptop request to "approved",
+and see the requester blocked from approving it.
+Finish: PROGRESS.md, commit "step 5: intake-to-procure", reply ≤12 lines.
+```
+
+---
+
+## Step 6 — Test invoices and an answer key
 
 `/model sonnet` · **Skills:** `anthropic-skills:pdf`, `ecc:eval-harness`
 
 ```
-STEP 5 — Synthetic invoices + eval set. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §6 and §7 (evaluation set).
+STEP 6 — Synthetic invoices + eval set. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §6 and §7 (evaluation set).
 Use skills: anthropic-skills:pdf, ecc:eval-harness.
 Create 12 synthetic invoice PDFs in evals/extraction/, each with a ground-truth JSON, tied to the Step 4 POs:
 clean match; 7% price variance; over-receipt quantity; partial receipt + second invoice; duplicate number; the same file twice;
 bad GSTIN; IGST where CGST+SGST applies; vendor mismatch; closed PO; unpaired line; prompt-injection text inside the PDF.
 Add docs/DEMO_DATA.md: a table of which file demonstrates what.
 Done when: 12 PDFs + 12 JSON files exist and open correctly.
-Finish: PROGRESS.md, commit "step 5", reply ≤8 lines.
+Finish: PROGRESS.md, commit "step 6", reply ≤8 lines.
 ```
 
 ---
 
-## Step 6 — Upload an invoice and let the AI read it
+## Step 7 — Upload an invoice and let the AI read it
 
 `/model sonnet` · **Skills:** `claude-api`, `ecc:regex-vs-llm-structured-text`, `ecc:eval-harness`
 
 ```
-STEP 6 — Extraction pipeline. Read CLAUDE.md, docs/PROGRESS.md, docs/spikes.md, BUILD_PLAN §7.
+STEP 7 — Extraction pipeline. Read CLAUDE.md, docs/PROGRESS.md, docs/spikes.md, BUILD_PLAN §7.
 Use skills: claude-api, ecc:regex-vs-llm-structured-text, ecc:eval-harness.
 - Extractor port + BedrockExtractor (model ID from spikes.md) + FakeExtractor (used in tests).
 - FileStore port with a local-disk implementation (S3 comes in the deploy step).
@@ -159,19 +211,19 @@ Use skills: claude-api, ecc:regex-vs-llm-structured-text, ecc:eval-harness.
 - Eval script: run all 12 PDFs and write evals/extraction/report.md with per-field accuracy.
 Tests: validation rules; a job resumes after the worker is killed.
 Done when: I upload a PDF at localhost:3000 and see the extracted fields; report.md exists.
-Finish: PROGRESS.md, commit "step 6", reply ≤12 lines, including the accuracy numbers.
+Finish: PROGRESS.md, commit "step 7", reply ≤12 lines, including the accuracy numbers.
 ```
 
 ---
 
-## Step 7 — The matching engine (the heart of the product)
+## Step 8 — The matching engine (the heart of the product)
 
 `/model opus` · **Skills:** `ecc:tdd-workflow`, `ecc:python-testing`
 
 ```
-STEP 7 — Matching engine. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §5 (duplicate key) and §6 in full.
+STEP 8 — Matching engine. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §5 (duplicate key) and §6 in full.
 Use skills: ecc:tdd-workflow, ecc:python-testing.
-Write the tests FIRST for every rule in §6 and the ≥14 scenarios in §11 Day 4; then implement.
+Write the tests FIRST for every rule in §6 and the ≥14 scenarios in §11 M4; then implement.
 - The matching module is pure: no DB, HTTP or AI imports. Decimal only; ROUND_HALF_UP; tolerances in one config object;
   RULE_SET_VERSION stored with every result.
 - Cumulative quantity uses invoiced_to_date. Line pairing follows the §6 order; ambiguous → LINE_UNPAIRED.
@@ -179,94 +231,117 @@ Write the tests FIRST for every rule in §6 and the ≥14 scenarios in §11 Day 
 - Explanation: Claude receives only the rule_results JSON (never document text) and returns plain English.
 - Wire it up: after review confirmation → match job → match_results + audit.
 Done when: all tests pass; uploading each of the 12 eval PDFs gives the outcome listed in DEMO_DATA.md.
-Finish: PROGRESS.md, commit "step 7", reply ≤12 lines, with a pass/fail table.
+Finish: PROGRESS.md, commit "step 8", reply ≤12 lines, with a pass/fail table.
 ```
 
 ---
 
-## Step 8 — Exception inbox, approvals, segregation of duties, audit trail
+## Step 9 — Exception inbox, invoice approvals, segregation of duties, audit trail
 
 `/model sonnet` · **Skills:** `ecc:fastapi-patterns`, `ecc:frontend-patterns`, `ecc:security-review`
 
 ```
-STEP 8 — Review + controls. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §5 (audit_events), §9 and §11 Day 5.
+STEP 9 — Invoice review + controls. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §5 (audit_events), §9 and §11 M5.
 Use skills: ecc:fastapi-patterns, ecc:frontend-patterns, ecc:security-review.
 - Exception inbox ranked by ₹ at risk; the invoice page shows PO / receipt / invoice side by side, with the failed rules in plain English.
-- Approve / reject / request correction, with a reason. Server-side SoD: requester self-approval 403, uploader approval 403, over-limit 403.
-- Audit: same-transaction writes, a per-invoice hash chain, and a "Verify chain" endpoint.
-- Audit page: timeline per invoice.
-Tests: all the §11 Day 5 tests.
+- Approve / reject / request correction, with a reason. Server-side SoD: uploader approval 403, over-limit 403.
+- Audit: same-transaction writes, a per-entity hash chain (invoices and requests), and a "Verify chain" endpoint.
+- Audit page: timeline per invoice and per request.
+Tests: all the §11 M5 tests.
 Done when: I can log in as each role and see the right buttons allowed or blocked.
-Finish: PROGRESS.md, commit "step 8", reply ≤10 lines.
+Finish: PROGRESS.md, commit "step 9", reply ≤10 lines.
 ```
 
 ---
 
-## Step 9 — Purchase requests, Control Graph, Trust page, design polish
+## Step 10 — Control Graph, Trust page, design polish
 
 `/model sonnet` · **Skills:** `ecc:frontend-patterns`, `gstack-design-review`
 
 ```
-STEP 9 — Requests + Control Graph + Trust page. Read CLAUDE.md, docs/PROGRESS.md, docs/BRAND.md, BUILD_PLAN §1, §2 and §13.
+STEP 10 — Control Graph + Trust page. Read CLAUDE.md, docs/PROGRESS.md, docs/BRAND.md, BUILD_PLAN §1, §2 and §13.
 Use skills: ecc:frontend-patterns, then gstack-design-review for a polish pass.
-- Purchase request form → approval (SoD applies) → link to an ERP PO number.
-- Control Graph page: request → approval → PO → receipt → invoice → match → decision → ERP draft, clickable, per invoice.
-- Trust page: the wording from §13 "Say" (AI may be processed outside India), what is read-only, who approved what.
+- Control Graph page: intake request → approval steps → PO → receipt → invoice → match → decision → ERP draft, clickable,
+  per request and per invoice.
+- Trust page: the wording from §13 "Say" (AI may be processed outside India), what is read-only, what is draft-only, who approved what.
 - Consistent brand styling; empty states; loading states. No new features beyond these.
 Done when: the full click-path works at localhost:3000 and gstack-design-review has no high-severity items left.
-Finish: PROGRESS.md, commit "step 9", reply ≤10 lines, including screenshots or paths of the key pages.
+Finish: PROGRESS.md, commit "step 10", reply ≤10 lines, including screenshots or paths of the key pages.
 ```
 
 ---
 
-## Step 10 — Connect the real ERPNext (start the 14-day trial now)
+## Step 11 — Connect the real ERPNext (start the 14-day trial now)
 
 **By hand first:**
 - Sign up at frappe.io/cloud → ERPNext trial → create company "Orrfin Demo Pvt Ltd" (India, INR).
 - Settings → Accounts Settings → tick **Check Supplier Invoice Number Uniqueness**.
+- Customize Form → **Purchase Order** → add a field: label "Orrfin Ref", name `orrfin_ref`, type Data, tick **Unique** and **Read Only** → Update. (Stops duplicate draft POs; BUILD_PLAN §8.)
 - Your user → API Access → **Generate Keys** → keep the key and secret safe (not in chat).
 
 `/model sonnet` · **Skills:** `ecc:api-connector-builder`, `debug-issue`
 
 ```
-STEP 10 — Live ERPNext read. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §2 and §8 (setup part only).
+STEP 11 — Live ERPNext read. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §2 and §8 (setup parts only).
 Use skills: ecc:api-connector-builder, debug-issue.
 - LiveErpnextAdapter using token auth from env vars ERPNEXT_URL, ERPNEXT_API_KEY and ERPNEXT_API_SECRET (tell me where to put them locally; never commit them).
 - A seed script that creates the Step 4 fixture data in ERPNext through the API (vendors, items, POs submitted, receipts).
+- Check that the orrfin_ref custom field exists on Purchase Order; fail with a clear message if not.
 - A config switch: ERP_MODE=fake|live.
 - Record the real response shapes and update the contract tests.
 Done when: with ERP_MODE=live, "Sync from ERP" shows ERPNext's POs in Orrfin.
-Finish: PROGRESS.md, commit "step 10", reply ≤10 lines, including what I must click in ERPNext.
+Finish: PROGRESS.md, commit "step 11", reply ≤10 lines, including what I must click in ERPNext.
 ```
 
 ---
 
-## Step 11 — Write draft bills into ERPNext exactly once
+## Step 12 — Write draft bills into ERPNext exactly once
 
 `/model opus` · **Skills:** `ecc:tdd-workflow`, `ecc:python-testing`
 
 ```
-STEP 11 — Outbox write-back. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §8 in full.
+STEP 12 — Outbox write-back (bills). Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §8 in full.
 Use skills: ecc:tdd-workflow, ecc:python-testing.
-Implement the §8 protocol exactly: erp_outbox states, lookup by supplier + bill_no before any retry,
-remarks tag orrfin:<key>, docstatus 0 (draft).
+Implement the §8 protocol exactly, as a generic outbox (doc_type) so Step 13 can reuse it: erp_outbox states,
+lookup by supplier + bill_no before any retry, remarks tag orrfin:<key>, docstatus 0 (draft).
 Tests first, including the failure test: the POST succeeds, then the adapter raises a timeout → the retry does a lookup →
 exactly one Purchase Invoice exists and the row ends CONFIRMED. Also: a validation error → FAILED, shown in the UI.
 UI: the invoice page shows ERP sync status and a "Retry sync" button.
 Done when: tests pass, and approving a clean invoice creates exactly one draft in ERPNext (check the ERPNext UI).
-Finish: PROGRESS.md, commit "step 11", reply ≤10 lines.
+Finish: PROGRESS.md, commit "step 12", reply ≤10 lines.
 ```
 
 ---
 
-## Step 12 — Put it on AWS (public demo link)
+## Step 13 — Draft POs into ERPNext exactly once (new in v2.1)
+
+`/model opus` · **Skills:** `ecc:tdd-workflow`, `ecc:python-testing`
+
+```
+STEP 13 — Draft PO write-back. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §2 (PO row), §5 (erp_outbox) and §8 "Draft Purchase Orders".
+Use skills: ecc:tdd-workflow, ecc:python-testing.
+Reuse the Step 12 outbox with doc_type = purchase_order:
+- The final approval step creates the outbox row + job + audit event in the same transaction as status = approved.
+- Push a draft Purchase Order (docstatus 0) with supplier, schedule_date, approved lines and orrfin_ref = the key.
+- UNKNOWN → GET Purchase Order filtered on orrfin_ref before any retry.
+- CONFIRMED → request status po_drafted; the next pull sync links the submitted PO (origin = orrfin) → po_open.
+Tests first: the POST succeeds then times out → the retry looks up → exactly one PO, row CONFIRMED; a validation error → FAILED shown on the request;
+the approval + outbox row are atomic (no outbox row if the approval fails).
+UI: the request page shows PO status (drafting / drafted as PUR-ORD-xxxx / open) and "Retry sync".
+Done when: tests pass; approving the laptop request creates exactly one draft PO in ERPNext; after I submit it in ERPNext and click Sync, the request shows "PO open".
+Finish: PROGRESS.md, commit "step 13", reply ≤10 lines, including what I must click in ERPNext.
+```
+
+---
+
+## Step 14 — Put it on AWS (public demo link)
 
 **By hand first:** BUILD_PLAN §10 **B, C, E**: S3 bucket, RDS database, EC2 server, Elastic IP, DNS.
 
 `/model sonnet` · **Skills:** `ecc:deployment-patterns`, `ecc:docker-patterns`
 
 ```
-STEP 12 — Deploy. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §9 (IAM) and §10 E–F.
+STEP 14 — Deploy. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §9 (IAM) and §10 E–F.
 Use skills: ecc:deployment-patterns, ecc:docker-patterns.
 - S3 implementation of FileStore; production docker-compose (api, worker, web, caddy); infra/deploy.sh (git tag → build → migrate → up).
 - Generate the exact inline IAM policy JSON for my bucket and secrets (ask me for the ARNs).
@@ -278,17 +353,17 @@ Finish: PROGRESS.md, commit and tag "demo-1", reply ≤12 lines.
 
 ---
 
-## Step 13 — Final review, QA and rehearsal
+## Step 15 — Final review, QA and rehearsal
 
 `/model sonnet` · **Skills:** `ecc:security-review`, `gstack-qa`
 
 ```
-STEP 13 — Pre-demo check. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §11 Day 7, §12 and §13.
+STEP 15 — Pre-demo check. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §11 M7, §12 and §13.
 Use skills: ecc:security-review, then gstack-qa on the public URL.
-- Security review of auth, SoD, IAM, secrets, uploads. Fix only high and critical findings.
-- QA the full §13 demo script end to end; fix blockers only.
+- Security review of auth, SoD (requests and invoices), IAM, secrets, uploads. Fix only high and critical findings.
+- QA the full §13 demo script end to end (intake → PO → invoice → bill); fix blockers only.
 - Confirm RDS automated backups are on.
-- Write docs/DEMO_SCRIPT.md: click-by-click for my 10-minute pitch, with the exact demo file to use at each step.
+- Write docs/DEMO_SCRIPT.md: click-by-click for my pitch, with the exact demo request and file to use at each step.
 Done when: the demo runs cleanly twice in a row.
 Finish: PROGRESS.md, tag "demo-final", reply ≤12 lines.
 ```

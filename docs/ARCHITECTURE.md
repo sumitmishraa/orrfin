@@ -11,9 +11,9 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 
 | Component | Folder | What it does today | Comes later |
 |---|---|---|---|
-| Web app | `frontend/` | One placeholder page that checks the API is up | Login, inbox, invoices, POs, audit (Steps 3–9) |
+| Web app | `frontend/` | One placeholder page that checks the API is up | Login, intake requests and approvals, invoices, POs, audit (Steps 3–10) |
 | API | `backend/app/` | `GET /health`; settings from env; DB engine | Business modules and routes |
-| Worker | `backend/app/worker.py` | Not built yet | Jobs table loop: extract, erp_pull, erp_push (Steps 4, 6, 11) |
+| Worker | `backend/app/worker.py` | Not built yet | Jobs table loop: extract, erp_pull, erp_push for bills and POs (Steps 4, 7, 12, 13) |
 | Database | `infra/docker-compose.yml` | Postgres 16, empty; Alembic ready | Schema from §5 (Step 3) |
 | CI | `.github/workflows/ci.yml` | Migrations + pytest against Postgres | Same, with more tests |
 

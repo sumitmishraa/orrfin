@@ -2,7 +2,7 @@
 
 Orrfin is building a 7-day investor prototype: a P2P invoice-matching "Control Gate" connected to ERPNext.
 
-**The source of truth is [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) (v2).** Read it before any work, and follow its milestones in order (M0 to M6).
+**The source of truth is [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) (v2.1).** Read it before any work, and follow its milestones in order (M0 to M7).
 
 Build step by step with [docs/PROMPTS.md](docs/PROMPTS.md). At the start of every step, read [docs/PROGRESS.md](docs/PROGRESS.md) (the handoff log); at the end, append 8 lines or fewer to it. UI colours come from [docs/BRAND.md](docs/BRAND.md).
 
