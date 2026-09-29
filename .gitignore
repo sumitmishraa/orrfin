@@ -1,0 +1,40 @@
+# Added by code-review-graph
+.code-review-graph/
+
+# Secrets and local config: only .env.example is committed
+.env
+.env.*
+!.env.example
+*.pem
+*credentials*.csv
+*accessKeys*.csv
+.claude/settings.local.json
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Local runtime state from scripts/dev.ps1 (process IDs, logs)
+.dev/
+
+# Local file store (uploaded PDFs in development)
+storage/
+
+# Editors / personal notes
+.obsidian/
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

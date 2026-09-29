@@ -1,0 +1,127 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "../styles/tokens.css";
+
+/*
+ * Theme wiring: shadcn/ui components read the semantic variables below
+ * (--primary, --muted, ...). Each one points at a brand token from
+ * src/styles/tokens.css, following the role mapping in docs/BRAND.md.
+ * The app has one light theme: navy chrome around an ice/white workspace.
+ */
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* shadcn semantic colours */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Brand names, for places with no semantic equivalent (bg-navy, text-heading, ...) */
+  --color-navy: var(--orffin-navy);
+  --color-navy-soft: var(--orffin-navy-soft);
+  --color-blue-dark: var(--orffin-blue-dark);
+  --color-brand-blue: var(--orffin-blue);
+  --color-brand-bright: var(--orffin-blue-bright);
+  --color-cyan: var(--orffin-cyan);
+  --color-ice: var(--orffin-ice);
+  --color-ice-light: var(--orffin-ice-light);
+  --color-heading: var(--orffin-text-blue);
+  --color-header-glass: var(--orffin-header-glass);
+  --color-cyan-bloom: var(--orffin-cyan-bloom);
+
+  /* Invoice status colours. Never used alone: always with an icon and a text label (BRAND.md). */
+  --color-success: var(--orffin-success);
+  --color-warning: var(--orffin-warning);
+  --color-error: var(--orffin-error);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: var(--orffin-ice-light);
+  --foreground: var(--orffin-ink);
+  --card: var(--orffin-white);
+  --card-foreground: var(--orffin-ink);
+  --popover: var(--orffin-white);
+  --popover-foreground: var(--orffin-ink);
+  --primary: var(--orffin-blue-medium);
+  --primary-foreground: var(--orffin-white);
+  --secondary: var(--orffin-ice);
+  --secondary-foreground: var(--orffin-text-blue);
+  --muted: var(--orffin-ice);
+  --muted-foreground: var(--orffin-text-muted);
+  --accent: var(--orffin-ice);
+  --accent-foreground: var(--orffin-text-blue);
+  --destructive: var(--orffin-error);
+  --border: var(--orffin-border);
+  --input: var(--orffin-border);
+  --ring: var(--orffin-blue-medium);
+  --chart-1: var(--orffin-blue-bright);
+  --chart-2: var(--orffin-blue-medium);
+  --chart-3: var(--orffin-blue);
+  --chart-4: var(--orffin-cyan);
+  --chart-5: var(--orffin-blue-dark);
+  --radius: 0.625rem;
+
+  /* Dark sidebar and header */
+  --sidebar: var(--orffin-navy);
+  --sidebar-foreground: var(--orffin-white);
+  --sidebar-primary: var(--orffin-cyan);
+  --sidebar-primary-foreground: var(--orffin-navy);
+  --sidebar-accent: var(--orffin-blue-dark);
+  --sidebar-accent-foreground: var(--orffin-white);
+  --sidebar-border: var(--orffin-blue-dark);
+  --sidebar-ring: var(--orffin-cyan);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

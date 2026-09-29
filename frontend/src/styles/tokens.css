@@ -1,0 +1,41 @@
+/*
+ * Orrfin design tokens, built from docs/BRAND.md (the single source for colours).
+ * Change a colour in BRAND.md first, then here. Components never use raw hex values;
+ * they use the Tailwind names mapped in src/app/globals.css (bg-navy, text-muted-foreground, ...).
+ */
+
+:root {
+  /* Core */
+  --orffin-navy: #050f1b;
+  --orffin-navy-soft: #051325;
+  --orffin-blue-dark: #09203d;
+  --orffin-blue: #15376a;
+  --orffin-blue-medium: #2b64ae;
+  --orffin-blue-bright: #4496e0;
+  --orffin-cyan: #85c9f7;
+
+  /* Surfaces */
+  --orffin-ice: #e8f5fe;
+  --orffin-ice-light: #f3f9fe;
+  --orffin-white: #ffffff;
+
+  /* Text */
+  --orffin-ink: #071422;
+  --orffin-text-blue: #15376a;
+  /*
+   * BRAND.md supplies #5f7690, which is only ~4.2:1 on --orffin-ice and fails
+   * WCAG AA (4.5:1) for body text. #536a84 is the same hue, darkened: ~5.0:1 on
+   * ice and ~5.6:1 on white. BRAND.md asks for exactly this adjustment.
+   */
+  --orffin-text-muted: #536a84;
+
+  /* Borders and states */
+  --orffin-border: #bee3fc;
+  --orffin-success: #2b64ae;
+  --orffin-warning: #d99124;
+  --orffin-error: #c94343;
+
+  /* Effects (decorative only) */
+  --orffin-cyan-bloom: rgb(129 217 251 / 40%);
+  --orffin-header-glass: rgb(5 15 27 / 82%);
+}
