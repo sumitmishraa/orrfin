@@ -7,9 +7,11 @@
  * enforce the action (BUILD_PLAN §9), so the page never offers a click the server would refuse.
  */
 import { useState, type ReactNode } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   Check,
+  Network,
   CircleCheck,
   CircleDot,
   CircleX,
@@ -353,7 +355,14 @@ export default function RequestPage() {
       <PageHeader
         title={`${requestNumber(request.number)} · ${request.title}`}
         description={`${request.category_name} · requested by ${request.requester_name}`}
-        actions={<StatusBadge status={request.status} />}
+        actions={
+          <div className="flex items-center gap-3">
+            <StatusBadge status={request.status} />
+            <Link href={`/control-graph?request_id=${request.id}`} className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
+              <Network className="size-4" aria-hidden /> Control Graph
+            </Link>
+          </div>
+        }
       />
       <div className="flex flex-col gap-6">
         <StageTimeline request={request} />

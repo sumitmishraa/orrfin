@@ -4,7 +4,7 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 
 ## Current state
 - Step 0 (manual setup): Docker done; Bedrock access **pending**: founder opened an AWS support case (use-case form blocked); advised to file it as "Account and billing".
-- Steps 1, 3, 4, 5: done (29 Sep). Step 2: code done, live run blocked on Bedrock access. Step 6 done. Next: Step 7 (upload + AI extraction: needs Bedrock, or the Anthropic API fallback). Steps renumbered in v2.1 (15 steps).
+- Steps 1, 3, 4, 5: done (29 Sep). Step 2: code done, live run blocked on Bedrock access. Steps 6-10 done (4 Oct). Next: Step 11 (live ERPNext: start the 14-day trial then). Bedrock still locked: local runs use AI_PROVIDER=fake. Steps renumbered in v2.1 (15 steps).
 
 ## Decisions so far
 - Plan: docs/BUILD_PLAN.md v2.1 (intake-to-procure + draft PO added 29 Sep). Prompts: docs/PROMPTS.md (15 steps).
@@ -44,3 +44,16 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 - Answer key = `expected_extraction` (for the Step 7 AI eval) + `expected_match` (for Step 8; assumes number order and that only matched invoices count toward "invoiced to date"). Exception names include `GSTIN_INVALID` (§6 rule 7 has no code yet).
 - PDFs print "INR"/"Rs." (the built-in PDF font has no ₹ glyph). Injection PDF: visible grey note + hidden white copy.
 - Verified: `tests/contract/test_eval_invoices.py` (49 checks; 99 backend tests in total: PDFs open and show the key numbers, keys add up to the paisa, each scenario trips only its declared rule, derived from the ERP fixtures). `pypdf` added to dev deps.
+
+**Step 7 — upload + extraction (4 Oct).** Ports `Extractor` (Claude via Bedrock or Anthropic API; `FakeExtractor` = labelled answer keys) and `FileStore` (local disk). Upload (PDF magic bytes, ≤10 MB, same file → 409) → `extract` job → fields + evidence → validation (`invoices/validation.py`: GSTIN, dates ±400 d, arithmetic ±₹1) → review page (PDF left, fields right, edits → field_edits + audit) → confirm (or "as printed").
+- Outage: `jobs.handler(on_give_up=…)`; 3 failed tries → `manual_entry`. Worker-kill resume tested. Additive migration 0126c4a935a7.
+- Eval: `backend/scripts/run_extraction_eval.py` → `evals/extraction/report.md` = **Bedrock 0/204, 12× "Operation not allowed" (access not granted)**; harness baseline `report-fake-baseline.md` 219/219. Rerun when Bedrock works.
+- dev.ps1: worker now starts first + retries (python crashed at start-up: ntdll 0xc000070a when launched with the web server); `.env` has AI_PROVIDER=fake locally.
+
+**Step 8 — matching engine (4 Oct).** `modules/matching` is pure (§6 rules, `RULE_SET_VERSION 2026.09.1`, tolerances + risk weights in `config.py`); `invoices/match_job.py` builds inputs (invoiced-to-date counts matched/approved only), stores match_results (+risk_score, explanation, snapshot for staleness). Explanation: Claude from rule_results only, template fallback.
+- Verified: 26 engine tests + `test_eval_set_matching.py`: all 12 eval PDFs end to end give exactly their DEMO_DATA outcome, exceptions and ₹ at risk.
+
+**Step 9 — review + controls (4 Oct).** `modules/review`: approve/reject/request correction; uploader/editor approval 403, over-limit 403, reason required (and for approving an exception), stale → 409 + re-match. Exception inbox ranked by ₹ at risk; `/audit` list + timeline + hash-chain verify (tamper test). 14 tests.
+
+**Step 10 — Control Graph + Trust (4 Oct).** `GET /control-graph` (invoice or request chain, clickable); `/trust` page uses §13 "Say" wording; nav + empty/loading states. Live walk at :3001 passed (role buttons, SoD refusals, chain verify). 182 backend tests; tsc/lint/build clean.
+- Open: gstack-design-review pass not run (see reply); real AI accuracy pending Bedrock; CA review of tolerances (§11).

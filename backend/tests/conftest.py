@@ -7,6 +7,7 @@ don't depend on each other's rows.
 """
 
 import os
+import tempfile
 import uuid
 from collections.abc import Iterator
 from decimal import Decimal
@@ -26,6 +27,9 @@ TEST_PASSWORD = "correct-horse-test"
 _base_url = make_url(Settings().database_url)
 _test_url = _base_url.set(database=f"{_base_url.database}_test")
 os.environ["DATABASE_URL"] = _test_url.render_as_string(hide_password=False)
+# Tests read invoices with the answer-key extractor and keep uploads in a throwaway folder.
+os.environ["AI_PROVIDER"] = "fake"
+os.environ["FILE_STORE_DIR"] = tempfile.mkdtemp(prefix="orrfin-test-files-")
 get_settings.cache_clear()
 
 

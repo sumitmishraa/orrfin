@@ -31,11 +31,15 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `backend/app/modules/sync/` | ERP pull (upsert by `erp_ref`, skip unchanged) and the read-only vendor/PO routes |
 | `backend/app/modules/audit/service.py` | `record_event` (hash-chained per entity) and `verify_chain` |
 | `backend/app/jobs.py`, `worker.py` | Postgres job queue (`SKIP LOCKED`, retries, stale-job recovery) and its worker process |
+| `backend/app/modules/invoices/` | Upload, `extract` job, validation (`validation.py`), edits/confirm, `match_job.py` (DB ↔ engine bridge) |
+| `backend/app/modules/matching/` | **Pure** §6 rules engine: `engine.py`, `config.py` (version, tolerances, risk weights), template `explain.py` |
+| `backend/app/modules/review/` | Invoice decisions with SoD, re-match, audit list/timeline/verify, Control Graph |
+| `backend/app/adapters/claude_ai.py`, `fake_extractor.py`, `local_filestore.py` | Claude extraction + explanation (Bedrock / Anthropic API), labelled answer-key stand-in, local file store |
 | `backend/app/errors.py` | Business refusals (403/404/409/422) with plain-English reasons |
 | `backend/app/seed_demo.py` | Demo org, 5 users, 3 categories, 3 approval tiers (idempotent) |
 | `backend/app/ports/` | Interfaces: Extractor, ErpAdapter, FileStore, Clock |
 | `backend/app/adapters/` | Implementations of the ports; the only place ERPNext field names may appear (`erpnext.py` translates, `erpnext_fake.py` serves `seed/erpnext/`) |
-| `frontend/src/app/(app)/` | Logged-in pages: Inbox, Requests (list, new, detail), POs, Vendors; Invoices/Audit are placeholders |
+| `frontend/src/app/(app)/` | Logged-in pages: Inbox, Requests, Invoices (list, upload, review/match/decision), POs, Vendors, Audit, Control Graph, Trust |
 | `frontend/src/proxy.ts`, `next.config.ts` | Redirect to /login without a session cookie; `/api/*` is forwarded to FastAPI (same-origin cookie) |
 | `backend/alembic/` | Migrations (additive only during demo week) |
 | `backend/tests/` | `unit/`, `integration/` now; `contract/`, `failure/` later |
@@ -44,6 +48,7 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `frontend/src/components/ui/` | shadcn/ui components |
 | `backend/scripts/` | One-off tools: `make_sample_invoice.py` (synthetic GST PDF), `bedrock_spike.py` (Step 2 Bedrock proof) |
 | `seed/invoices/` | The single Step 2 Bedrock-spike invoice and its ground-truth `.expected.json` |
+| `evals/extraction/` | Also `report.md` (latest real-AI eval) and `report-fake-baseline.md` (harness check). |
 | `evals/extraction/` | 12 evaluation invoices tied to the Step 4 POs, each with an answer key (built by `backend/scripts/make_eval_invoices.py`; table in `docs/DEMO_DATA.md`) |
 | `scripts/dev.ps1` | Start/stop the local stack |
 | `docs/adr/` | Short records of significant decisions |
@@ -57,3 +62,4 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 ## Decisions
 - [ADR 0001](adr/0001-postgres-driver-pg8000.md): pg8000 Postgres driver (Windows blocks psycopg's DLL).
 - [ADR 0002](adr/0002-app-database-role.md): the app runs as the restricted `orrfin_app` role (`SET ROLE`), so it can't rewrite audit events.
+- [ADR 0003](adr/0003-ai-provider-and-fake-extractor.md): one AI port, three providers; the answer-key stand-in is always labelled; AI outages fall back to manual entry.

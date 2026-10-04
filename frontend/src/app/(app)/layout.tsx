@@ -7,7 +7,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, FileText, Inbox, ListChecks, LogOut, Package, ScrollText, ShieldCheck } from "lucide-react";
+import { BadgeCheck, Building2, FileText, Inbox, ListChecks, LogOut, Package, ScrollText, ShieldCheck } from "lucide-react";
 
 import { SessionProvider, useMe } from "@/components/session";
 import { post } from "@/lib/api";
@@ -20,6 +20,7 @@ const NAV = [
   { href: "/pos", label: "POs", icon: Package },
   { href: "/vendors", label: "Vendors", icon: Building2 },
   { href: "/audit", label: "Audit", icon: ScrollText },
+  { href: "/trust", label: "Trust", icon: BadgeCheck },
 ];
 
 function Shell({ children }: { children: ReactNode }) {

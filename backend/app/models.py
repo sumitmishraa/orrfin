@@ -295,6 +295,15 @@ class Invoice(TimestampMixin, Base):
     igst: Mapped[Decimal | None] = mapped_column(MONEY)
     total: Mapped[Decimal | None] = mapped_column(MONEY)
     status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="uploaded")
+    # Step 7 (additive): fields read from the PDF that matching needs and finance may correct.
+    vendor_name: Mapped[str | None] = mapped_column(String(200))
+    buyer_gstin: Mapped[str | None] = mapped_column(String(15))
+    po_reference: Mapped[str | None] = mapped_column(String(140))  # the buyer's PO number as printed
+    place_of_supply: Mapped[str | None] = mapped_column(String(2))  # GST state code, e.g. 27
+    # Step 7 (additive): why extraction fell back to manual entry, and who confirmed the fields.
+    extraction_error: Mapped[str | None] = mapped_column(Text)
+    confirmed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class InvoiceLine(TimestampMixin, Base):
@@ -352,6 +361,11 @@ class MatchResult(TimestampMixin, Base):
     amount_at_risk: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
     inputs_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     rule_results: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    # Step 8 (additive): fixed-weight risk score (0-100) and the plain-English explanation,
+    # written from rule_results only (by Claude, or by a template when AI is unavailable).
+    risk_score: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    explanation: Mapped[str | None] = mapped_column(Text)
+    explanation_source: Mapped[str | None] = mapped_column(String(60))
 
 
 class ReviewDecision(TimestampMixin, Base):

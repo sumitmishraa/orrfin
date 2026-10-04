@@ -133,6 +133,115 @@ export interface Job {
   finished_at: string | null;
 }
 
+// --- Invoices (Steps 7-9) ---------------------------------------------------------------------
+
+export type InvoiceStatus =
+  | "extracting" | "needs_review" | "manual_entry" | "confirmed" | "matching"
+  | "matched" | "exception" | "approved" | "rejected" | "correction_requested";
+
+export interface InvoiceSummary {
+  id: string;
+  status: InvoiceStatus;
+  filename: string;
+  vendor_name: string | null;
+  invoice_no: string | null;
+  invoice_date: string | null;
+  po_reference: string | null;
+  total: string | null;
+  outcome: "matched" | "exception" | "stale" | null;
+  amount_at_risk: string | null;
+  risk_score: number | null;
+  created_at: string;
+}
+
+export interface InvoiceLine {
+  line_no: number;
+  description: string;
+  item_code: string | null;
+  hsn: string | null;
+  qty: string;
+  rate: string;
+  amount: string;
+  po_line_id: string | null;
+  pairing_method: string | null;
+}
+
+export interface RuleResult {
+  rule: string;
+  code: string;
+  status: "pass" | "fail" | "warn" | "info";
+  message: string;
+  amount_at_risk: string;
+  line_no: number | null;
+}
+
+export interface MatchView {
+  outcome: "matched" | "exception" | "stale";
+  matched_outcome: "matched" | "exception";
+  amount_at_risk: string;
+  risk_score: number;
+  rule_set_version: string;
+  rule_results: RuleResult[];
+  explanation: string | null;
+  explanation_source: string | null;
+  matched_at: string;
+  po: { id: string; erp_ref: string; status: string; vendor_name: string | null; vendor_gstin: string | null } | null;
+  unpaired_lines: number[];
+  comparison: {
+    po_line: number; item_code: string; description: string; po_qty: string; po_rate: string;
+    received: string; invoiced_before: string; invoice_qty: string | null; invoice_rate: string | null;
+  }[];
+}
+
+export interface InvoiceDetail extends InvoiceSummary {
+  vendor_gstin: string | null;
+  buyer_gstin: string | null;
+  place_of_supply: string | null;
+  currency: string;
+  subtotal: string | null;
+  cgst: string | null;
+  sgst: string | null;
+  igst: string | null;
+  uploaded_by_name: string;
+  confirmed_by_name: string | null;
+  confirmed_at: string | null;
+  extraction_error: string | null;
+  lines: InvoiceLine[];
+  issues: { field: string; code: string; message: string }[];
+  evidence: Record<string, { quote: string; page: number }>;
+  extraction: { model_id: string; prompt_version: string; confidence: string | null; finished_at: string | null; simulated: boolean } | null;
+  edits: { field: string; old: string | null; new: string | null; edited_by_name: string; at: string }[];
+  timeline: TimelineEvent[];
+  allowed: { edit: boolean; confirm: boolean; decide: boolean; approve_blocked_reason: string | null };
+  match: MatchView | null;
+  decisions: { decision: string; reason: string | null; reviewer_name: string; at: string }[];
+}
+
+export interface AuditEntity {
+  entity_type: "invoice" | "purchase_request";
+  entity_id: string;
+  label: string;
+  status: string;
+  events: number;
+  last_action: string;
+}
+
+export interface AuditTrail {
+  entity_type: string;
+  entity_id: string;
+  label: string;
+  chain_valid: boolean;
+  events: (TimelineEvent & { hash: string })[];
+}
+
+export interface GraphNode {
+  kind: string;
+  label: string;
+  state: "done" | "current" | "blocked" | "pending" | "skipped";
+  detail: string;
+  href: string | null;
+}
+
 export interface PoSummary {
   id: string;
   erp_ref: string;

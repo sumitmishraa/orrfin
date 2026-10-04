@@ -103,5 +103,19 @@ def verify_chain(db: Session, entity_id: uuid.UUID) -> bool:
     return True
 
 
+def timeline(db: Session, org_id: uuid.UUID, entity_id: uuid.UUID) -> list[dict[str, Any]]:
+    """An entity's events in order, with the actor's name, for the screens (Steps 7-10)."""
+    from app.models import User  # local import: keeps this module importable from models' callers
+
+    rows = db.execute(
+        select(AuditEvent, User.full_name)
+        .outerjoin(User, User.id == AuditEvent.actor_id)
+        .where(AuditEvent.entity_id == entity_id, AuditEvent.org_id == org_id)
+        .order_by(AuditEvent.seq)
+    ).all()
+    return [{"seq": e.seq, "action": e.action, "actor_name": name, "at": e.created_at, "payload": e.payload,
+             "hash": e.hash} for e, name in rows]
+
+
 def count_events(db: Session, entity_id: uuid.UUID) -> int:
     return db.scalar(select(func.count()).where(AuditEvent.entity_id == entity_id)) or 0

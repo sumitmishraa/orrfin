@@ -25,13 +25,21 @@ log = logging.getLogger("orrfin.jobs")
 
 STALE_AFTER = timedelta(minutes=10)
 Handler = Callable[[Session, Job], dict[str, Any]]
+GiveUp = Callable[[Session, Job, str], None]
 HANDLERS: dict[str, Handler] = {}
+GIVE_UP: dict[str, GiveUp] = {}
 
 
-def handler(kind: str) -> Callable[[Handler], Handler]:
-    """Register a function as the handler for one job kind."""
+def handler(kind: str, on_give_up: GiveUp | None = None) -> Callable[[Handler], Handler]:
+    """Register a function as the handler for one job kind.
+
+    `on_give_up(db, job, error)` runs once, in its own transaction, after the last attempt
+    fails, e.g. to switch an invoice to manual entry when the AI stays unavailable (§7).
+    """
     def register(fn: Handler) -> Handler:
         HANDLERS[kind] = fn
+        if on_give_up:
+            GIVE_UP[kind] = on_give_up
         return fn
     return register
 
@@ -83,7 +91,8 @@ def run_next(db: Session) -> Job | None:
         db.rollback()
         job = db.get(Job, job.id)
         job.last_error = f"{type(exc).__name__}: {exc}"
-        if job.attempts >= job.max_attempts:
+        gave_up = job.attempts >= job.max_attempts
+        if gave_up:
             job.status, job.finished_at = "failed", datetime.now(UTC)
         else:
             # Back off 5 s, 10 s, 20 s ... so a flaky ERP isn't hammered.
@@ -92,6 +101,13 @@ def run_next(db: Session) -> Job | None:
         db.commit()
         log.warning("Job %s (%s) attempt %s failed: %s\n%s", job.id, job.kind, job.attempts,
                     job.last_error, traceback.format_exc())
+        if gave_up and job.kind in GIVE_UP:
+            try:
+                GIVE_UP[job.kind](db, job, job.last_error)
+                db.commit()
+            except Exception:  # never let the fallback crash the worker; it is logged
+                db.rollback()
+                log.exception("Give-up handler for job %s (%s) failed", job.id, job.kind)
     return job
 
 

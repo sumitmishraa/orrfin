@@ -56,6 +56,18 @@ above → manager, finance, then admin.
 `IT-LAP-14-I5` → **Save and send for approval**. As Neha, then Vikram → **Approve**. The request shows
 **Approved · ready for PO**.
 
+## Invoices (Steps 7-10)
+
+**AI reader:** set `AI_PROVIDER` in `.env` to `bedrock` (the plan; needs Bedrock model access, see
+`docs/spikes.md`), `anthropic` (with `ANTHROPIC_API_KEY`), or `fake`. `fake` reads only the 12 evaluation
+PDFs, from their answer keys, and every screen labels it "Simulated reading". Other PDFs go to manual entry.
+
+**Try it:** as Vikram (finance) → **Invoices** → **Upload invoice PDF** → pick a file from `evals/extraction/`
+→ check the fields → **Save and confirm for matching**. The match result appears with a plain-English reason.
+Then as Anita (admin) → open it → **Approve** or **Reject** (Vikram can't approve it: whoever uploads an invoice can't approve it).
+**Audit** shows every record's history and verifies its hash chain; **Control Graph** replays the chain.
+Expected results for each PDF: `docs/DEMO_DATA.md`. Extraction accuracy: `evals/extraction/report.md`.
+
 ## Tests
 
 ```powershell

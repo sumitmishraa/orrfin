@@ -74,6 +74,9 @@ function Start-DockerEngine {
 
 function Stop-AppProcesses {
     if (-not (Test-Path $PidFile)) { return }
+    # taskkill reports already-exited child processes on stderr; that is harmless here, so don't
+    # let PowerShell 5.1 turn it into a fatal error.
+    $ErrorActionPreference = 'Continue'
     $saved = Get-Content $PidFile -Raw | ConvertFrom-Json
     foreach ($name in 'api', 'worker', 'web') {
         $id = $saved.$name
@@ -179,6 +182,24 @@ if ($dotenv.ContainsKey('NEXT_PUBLIC_API_URL')) { $env:NEXT_PUBLIC_API_URL = $do
 # The API only accepts browser calls from the web app's own origin (CORS), so follow -WebPort.
 if ($WebPort -ne 3000) { $env:CORS_ORIGINS = "[`"http://localhost:$WebPort`"]" }
 
+# The worker runs background jobs such as "Sync from ERP" and invoice reading (BUILD_PLAN §4).
+# It starts first and alone: on this laptop python.exe sometimes crashed at start-up (ntdll,
+# 0xc000070a: invalid handle) when launched in the same instant as the web server, leaving
+# empty logs. Checking it is alive after a few seconds, and retrying, makes that self-healing.
+function Start-Worker {
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $proc = Start-Process -FilePath $VenvPy -WorkingDirectory $Backend -WindowStyle Hidden -PassThru `
+            -ArgumentList '-m', 'app.worker' `
+            -RedirectStandardOutput (Join-Path $StateDir 'worker.log') -RedirectStandardError (Join-Path $StateDir 'worker.err.log')
+        Start-Sleep -Seconds 3
+        if (-not $proc.HasExited) { return $proc }
+        Write-Host "Worker exited at start-up (attempt $attempt of 3); retrying..."
+    }
+    return $proc
+}
+Write-Host 'Starting worker...'
+$worker = Start-Worker
+
 Write-Host 'Starting API and web app...'
 $api = Start-Process -FilePath $VenvPy -WorkingDirectory $Backend -WindowStyle Hidden -PassThru `
     -ArgumentList '-m', 'uvicorn', 'app.main:app', '--reload', '--host', '127.0.0.1', '--port', '8000' `
@@ -186,16 +207,12 @@ $api = Start-Process -FilePath $VenvPy -WorkingDirectory $Backend -WindowStyle H
 $web = Start-Process -FilePath 'npm.cmd' -WorkingDirectory $Frontend -WindowStyle Hidden -PassThru `
     -ArgumentList 'run', 'dev', '--', '--port', "$WebPort" `
     -RedirectStandardOutput (Join-Path $StateDir 'web.log') -RedirectStandardError (Join-Path $StateDir 'web.err.log')
-# The worker runs background jobs such as "Sync from ERP" (BUILD_PLAN §4).
-$worker = Start-Process -FilePath $VenvPy -WorkingDirectory $Backend -WindowStyle Hidden -PassThru `
-    -ArgumentList '-m', 'app.worker' `
-    -RedirectStandardOutput (Join-Path $StateDir 'worker.log') -RedirectStandardError (Join-Path $StateDir 'worker.err.log')
 @{ api = $api.Id; worker = $worker.Id; web = $web.Id } | ConvertTo-Json | Set-Content $PidFile
 
 $apiUp = Wait-ForUrl 'http://localhost:8000/health' 60
 $webUp = Wait-ForUrl "http://localhost:$WebPort" 120
 # The worker has no URL to wait for; a dead worker means "Sync from ERP" jobs would never run.
-$workerUp = -not $worker.HasExited
+$workerUp = ($null -ne $worker) -and -not $worker.HasExited
 
 Write-Host ''
 if ($apiUp) { Write-Host 'API  ready:  http://localhost:8000/health   (docs: http://localhost:8000/docs)' }
