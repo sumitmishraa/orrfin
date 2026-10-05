@@ -1,7 +1,7 @@
 # Orrfin P2P + Invoice-Matching Prototype: Build Plan v2
 
 **Status:** approved plan; Step 1 (walking skeleton) built. See `docs/PROGRESS.md`.
-**Version:** v2.1 (29 Sep 2026). v2 (26 Sep) replaced v1 after an engineering review scored v1 at 50/100. v2.1 adds the intake-to-procure workflow and full P2P (Orrfin drafts the PO), approved by the founder on 29 Sep; see "v2.1 changes" below.
+**Version:** v2.2 (5 Oct 2026). v2 (26 Sep) replaced v1 after an engineering review scored v1 at 50/100. v2.1 adds the intake-to-procure workflow and full P2P (Orrfin drafts the PO), approved by the founder on 29 Sep. v2.2 adds multi-ERP connectors (Tally, Microsoft Dynamics, SAP, Oracle, Zoho, Odoo beside ERPNext), approved by the founder on 5 Oct; see "v2.2 changes" below and `docs/ERP_CONNECTORS.md`.
 **Target:** a working investor demo on synthetic data. The pitch date moved later (v2.1) and is not yet fixed; build in `docs/PROMPTS.md` step order.
 **Not a target:** production use or real customer data. See section 12 for the gates that must be passed before a pilot.
 
@@ -34,6 +34,16 @@
 | 16 | Pitch moved later; schedule is by step, not by day | Scope grew by roughly three build steps |
 
 Still out of scope: vendor quotes/comparison, new-vendor onboarding requests, payments.
+
+**v2.2 changes (5 Oct 2026, approved by the founder, including the §2 and §8 edits):**
+
+| # | Change | Reason |
+|---|---|---|
+| 17 | **Multi-ERP connectors.** One `ErpAdapter` port, a registry, and one adapter per ERP: ERPNext, TallyPrime, BUSY, Dynamics 365 Business Central, Dynamics 365 F&O, SAP S/4HANA, SAP Business One, Oracle Fusion, NetSuite, Zoho Books, Odoo. Research and per-ERP mapping: `docs/ERP_CONNECTORS.md`. | Investors must see that Orrfin plugs into the ERPs companies actually use, small to large, not only ERPNext |
+| 18 | **Every connector carries an honest label:** *Live* (real trial/free/local system: ERPNext, Tally, Business Central, Zoho Books, Odoo), *Sandbox* (SAP's official read-only API) or *Simulated* (fixtures in the vendor's published API format: the rest). All pass one shared contract test suite. | §13 claims policy: never "works with every ERP" |
+| 19 | §2 and §8 say "the connected ERP" instead of "ERPNext". The §8 safety rules are unchanged; the draft meaning and the lookup key are defined **per ERP** (§8 table). | Write-back is built once, for every ERP |
+| 20 | §5 (additive): new table `erp_connections`; mirrored tables get `erp_connection_id`. | Know which ERP each mirrored row came from; switch ERPs in the demo |
+| 21 | Steps renumbered: Step 11 = ERP research, Step 12 = multi-ERP plug, 13–15 = live ERPNext + write-back, 16–20 = connector families, 21 = deploy, 22 = final review. SAP and Tally leave the stretch goals. | Design the plug before write-back code is written against one ERP |
 
 ---
 
@@ -71,16 +81,19 @@ It has two connected workflows:
 
 ## 2. Who owns which record (system of record)
 
+*(v2.2)* "ERP" below means **the org's connected ERP** (its active row in `erp_connections`): ERPNext, Tally, Business Central, SAP, Oracle, Zoho Books, Odoo or another connector in `docs/ERP_CONNECTORS.md`. ERPNext names are kept as the worked example. Each ERP's own names for these records are in ERP_CONNECTORS.md §3.
+
 | Record | Owner | Orrfin's role |
 |---|---|---|
-| Vendor master, GSTIN | ERPNext | Read-only mirror (`erp_ref`, `erp_modified`) |
+| Vendor master, GSTIN | ERP | Read-only mirror (`erp_ref`, `erp_modified`, `erp_connection_id`) |
 | Intake request (purchase request), its lines, routing and approvals | **Orrfin** | Owns |
 | Categories (which buyer owns which category) and approval policies (amount tiers) | **Orrfin** | Owns; configured per org |
-| Purchase order | ERPNext | Orrfin writes a **draft** PO through the outbox after the request is approved (§8); a human submits it in ERPNext. After that, Orrfin mirrors it read-only like any other PO. POs created directly in ERPNext are mirrored too. |
-| Goods receipt (ERPNext "Purchase Receipt") | ERPNext | Read-only mirror |
+| Purchase order | ERP | Orrfin writes a **draft** PO through the outbox after the request is approved (§8); a human submits it in the ERP. After that, Orrfin mirrors it read-only like any other PO. POs created directly in the ERP are mirrored too. *(For an ERP with no draft PO through its API, such as SAP S/4HANA, Orrfin drafts a purchase requisition instead; see §8.)* |
+| Goods receipt (ERPNext "Purchase Receipt", Tally "Receipt Note", SAP material document) | ERP | Read-only mirror |
 | Invoice PDF, extracted fields, field edits | **Orrfin** | Owns; every edit is audited |
 | Match result, exceptions, review decisions | **Orrfin** | Owns; append-only |
-| Purchase Invoice (the bill) | ERPNext | Orrfin writes a **draft** only, through the outbox |
+| Purchase Invoice (the bill) | ERP | Orrfin writes a **draft** only, through the outbox |
+| ERP connections *(v2.2)*: which ERP an org uses, its demo label and mode | **Orrfin** | Owns; credentials live in env vars / Secrets Manager, never in the table |
 | Audit trail / control graph | **Orrfin** | Owns; append-only, hash-chained per invoice |
 
 **Conflict rule:** if an ERP record changes after Orrfin has matched against it (its `erp_modified` is newer), the match is marked **stale** and must be re-run before approval.
@@ -100,16 +113,16 @@ It has two connected workflows:
 | Auth | Email + password (argon2 hash) with a server-side session cookie; roles stored in the database | SSO/Cognito later |
 | Hosting | One EC2 server, Docker Compose (api, worker, web, Caddy for HTTPS) | Fargate at pilot stage |
 | CI | GitHub (private repo) + GitHub Actions: pytest against a Postgres service container | Required from Day 1 |
-| ERP | **ERPNext** on a Frappe Cloud trial: read vendors/POs/receipts, write draft Purchase Invoice | **The trial lasts 14 days.** Started 25–26 Sep, it ends around 9–10 Oct. Budget for a paid plan if the pitch slips. |
+| ERP | **ERPNext** on a Frappe Cloud trial is the primary live ERP: read vendors/POs/receipts, write draft bills and POs. *(v2.2)* Plus connectors for TallyPrime, BUSY, Dynamics 365 Business Central and F&O, SAP S/4HANA and Business One, Oracle Fusion, NetSuite, Zoho Books and Odoo, each labelled Live / Sandbox / Simulated (`docs/ERP_CONNECTORS.md`) | **The ERPNext trial lasts 14 days; Business Central's lasts 30.** Start each in the step that needs it (Steps 13 and 17), or budget for a paid plan if the pitch slips. |
 
 **Local-first development (decided 26 Sep):**
 
-| Concern | On the laptop (Steps 1–11) | On AWS (Step 12) |
+| Concern | On the laptop (Steps 1–20) | On AWS (Step 21) |
 |---|---|---|
 | Postgres | Docker Desktop, `postgres:16` | RDS |
 | Files | Local disk, behind the `FileStore` port | S3 |
 | AI | Bedrock, called with the laptop IAM user `orrfin-dev-laptop` (Bedrock-only) | Bedrock, called with the EC2 instance role |
-| ERP | Fake ERPNext fixtures first; live trial from Step 10 | Live ERPNext |
+| ERP | Fake ERPNext fixtures first; live ERPNext from Step 13; other connectors in Steps 16–20 (Tally and Odoo run on the laptop) | Live ERPNext, Business Central, Zoho Books, SAP sandbox; simulated connectors run from fixtures. Tally needs the laptop (or the future local agent), so demo it from the laptop. |
 
 Steps and prompts are in `docs/PROMPTS.md`.
 
@@ -132,22 +145,30 @@ Browser ─HTTPS─► │ web (Next.js) ─► api (FastAPI)                   
                   (NUMERIC money,                      (extract + explain;
                    append-only audit)                   may run outside India)
                            │
-          ErpAdapter(ERPNext): pull = upsert by erp_ref (skip if erp_modified unchanged)
-                               push = outbox: PENDING → SENT → CONFIRMED | FAILED | UNKNOWN
-                                      UNKNOWN → look up (supplier, bill_no) before any retry
+          ErpAdapter (one port; registry picks the org's connected ERP, v2.2)
+            adapters: erpnext │ tally │ busy │ business_central │ dynamics_fo │ sap_s4 │ sap_b1
+                      oracle_fusion │ netsuite │ zoho_books │ odoo     (each Live / Sandbox / Simulated)
+            pull = upsert by (erp_connection_id, erp_ref) (skip if erp_modified unchanged)
+            push = outbox: PENDING → SENT → CONFIRMED | FAILED | UNKNOWN
+                   UNKNOWN → adapter.find_bill / find_po (per-ERP key, §8) before any retry
 ```
+
+*(v2.2)* **Connector rules:**
+- Every adapter implements the same port: `capabilities()`, `list_vendors`, `list_purchase_orders`, `list_receipts`, `create_draft_bill`, `find_bill`, `create_draft_po`, `find_po`. `capabilities()` declares what it can do (for example the SAP sandbox: read only).
+- Every adapter passes **one shared contract test suite**, fed by one canonical demo dataset rendered into each ERP's native format.
+- Simulated adapters read fixtures shaped exactly like the vendor's published API responses. They must never be presented as live.
 
 The `procurement` module owns the intake-to-procure workflow: intake requests, routing, approval chains and the hand-off to the PO outbox.
 
 **Module rules (enforced in code review):**
 - `matching` imports no database, HTTP or AI code. It takes Pydantic objects and returns a `MatchResult` with a `rule_set_version`.
-- Adapters convert ERP data into Orrfin's own data model. No ERPNext field names appear outside `adapters/`.
+- Adapters convert ERP data into Orrfin's own data model. No ERP-specific field names (ERPNext, Tally, SAP, …) appear outside `adapters/`.
 - Only the `sync` module calls `ErpAdapter`. Only the `invoices` module calls `Extractor`.
 - Every state change and its audit row are written in the **same database transaction**.
 
 **Repo layout:**
 ```
-backend/app/{main.py, config.py, db.py, auth/, modules/{procurement,invoices,matching,review,audit,sync}/, adapters/{base.py,erpnext.py}, ports/, worker.py}
+backend/app/{main.py, config.py, db.py, auth/, modules/{procurement,invoices,matching,review,audit,sync}/, adapters/{erpnext.py, tally.py, business_central.py, sap_s4.py, …, registry.py}, ports/, worker.py}
 backend/tests/{unit,contract,integration,failure}/
 backend/alembic/
 frontend/                   # Next.js (or backend/app/templates if using the fallback)
@@ -171,14 +192,15 @@ Every business table has `id (uuid)`, `org_id (uuid, not null, indexed)`, `creat
 | Table | Key columns |
 |---|---|
 | `orgs`, `users` | `users.role` ∈ {requester, buyer, approver, finance, admin}; `approval_limit NUMERIC`; `manager_id` (nullable, for the first approval step) |
-| `vendors` | `erp_ref`, `erp_modified`, `name`, `gstin`, `state_code` |
+| `erp_connections` *(v2.2)* | `system` ∈ {erpnext, tally, busy, business_central, dynamics_fo, sap_s4, sap_b1, oracle_fusion, netsuite, zoho_books, odoo}, `product_name`, `label` ∈ {live, sandbox, simulated}, `mode` ∈ {fake, live}, `base_url` (nullable; no secrets), `active` (at most one active per org) |
+| `vendors` | `erp_connection_id` *(v2.2)*, `erp_ref`, `erp_modified`, `name`, `gstin`, `state_code` |
 | `categories` *(v2.1)* | `name` (e.g. IT hardware, Office supplies, Services), `buyer_id` (the owning buyer), `active` |
 | `approval_policies` *(v2.1)* | `min_amount`, `max_amount` (nullable = no ceiling), `steps jsonb` (ordered roles, e.g. `["manager","finance"]`), `active`; the tier whose range contains the request amount applies |
 | `purchase_requests` *(extended in v2.1)* | `requested_by`, `category_id`, `title`, `justification`, `cost_center`, `needed_by date`, `amount` (sum of lines), `currency`, `assigned_buyer_id`, `suggested_vendor_id` (nullable), `vendor_id` (set by the buyer), `status` ∈ {draft, submitted, with_buyer, in_approval, returned, approved, rejected, po_drafted, po_open, cancelled} |
 | `request_lines` *(v2.1)* | `request_id`, `description`, `item_code` (nullable until the buyer sets it), `qty`, `est_rate`, `amount`, `hsn` |
 | `request_approvals` | `request_id`, `step` (1, 2, …), `required_role`, `approver_id`, `decision` ∈ {approve, reject, return}, `reason`, `decided_at` |
-| `purchase_orders`, `po_lines` | `erp_ref`, `erp_modified`, `vendor_id`, `status`, `request_id` (nullable link), `origin` ∈ {orrfin, erp} *(v2.1)*; lines: `item_code`, `hsn`, `qty`, `rate`, `tax_rate` |
-| `goods_receipts`, `grn_lines` | `erp_ref`, `po_line_id`, `qty_received` |
+| `purchase_orders`, `po_lines` | `erp_connection_id` *(v2.2)*, `erp_ref`, `erp_modified`, `vendor_id`, `status`, `request_id` (nullable link), `origin` ∈ {orrfin, erp} *(v2.1)*; lines: `item_code`, `hsn`, `qty`, `rate`, `tax_rate` |
+| `goods_receipts`, `grn_lines` | `erp_connection_id` *(v2.2)*, `erp_ref`, `po_line_id`, `qty_received` |
 | `documents` | `s3_key`, `sha256` (unique per org), `uploaded_by` |
 | `invoices`, `invoice_lines` | `vendor_gstin`, `invoice_no`, `invoice_no_norm`, `invoice_date`, `fiscal_year`, `subtotal`, `cgst`, `sgst`, `igst`, `total`, `status`; lines: `description`, `item_code`, `hsn`, `qty`, `rate`, `amount`, `po_line_id` (paired), `pairing_method` |
 | `extractions` | `invoice_id`, `model_id`, `prompt_version`, `raw_output jsonb`, `field_evidence jsonb` (quoted text + page per field) |
@@ -186,7 +208,7 @@ Every business table has `id (uuid)`, `org_id (uuid, not null, indexed)`, `creat
 | `match_results` | `invoice_id`, `rule_set_version`, `outcome` ∈ {matched, exception, stale}, `amount_at_risk`, `inputs_snapshot jsonb`, `rule_results jsonb` |
 | `review_decisions` | `invoice_id`, `reviewer_id`, `decision` ∈ {approve, reject, request_correction}, `reason` |
 | `jobs` | `kind`, `payload jsonb`, `status`, `attempts`, `max_attempts`, `run_after`, `last_error` |
-| `erp_outbox` | `idempotency_key` (unique), `doc_type` ∈ {purchase_invoice, purchase_order} *(v2.1)*, `invoice_id` (nullable), `request_id` (nullable) — exactly one of the two is set, `state` ∈ {PENDING, SENT, CONFIRMED, FAILED, UNKNOWN}, `erp_doc_name`, `attempts`, `last_error` |
+| `erp_outbox` | `idempotency_key` (unique), `erp_connection_id` *(v2.2)*, `doc_type` ∈ {purchase_invoice, purchase_order} *(v2.1)*, `invoice_id` (nullable), `request_id` (nullable) — exactly one of the two is set, `state` ∈ {PENDING, SENT, CONFIRMED, FAILED, UNKNOWN}, `erp_doc_name`, `attempts`, `last_error` |
 | `audit_events` | `org_id`, `entity_type`, `entity_id`, `seq`, `actor_id`, `action`, `payload jsonb`, `prev_hash`, `hash`; unique (`entity_id`, `seq`) |
 
 **Database grants:** the application role gets `INSERT, SELECT` on `audit_events`, with no `UPDATE` or `DELETE`. Migrations run as a separate owner role.
@@ -246,6 +268,22 @@ The AI explanation receives **only** the `rule_results` JSON, never the document
 ---
 
 ## 8. ERP write-back protocol (exactly-once, in effect)
+
+*(v2.2)* This protocol applies to **every** connected ERP. ERPNext is the worked example below. The steps, states and rules are identical for all ERPs. Two things vary, and each adapter supplies them:
+- what "draft" means in that ERP;
+- which field the lookup-before-retry uses (`adapter.find_bill` / `adapter.find_po`).
+
+| ERP | Draft bill | Draft PO | Bill lookup | PO lookup |
+|---|---|---|---|---|
+| ERPNext | `docstatus 0` | `docstatus 0` | supplier + `bill_no` | `orrfin_ref` (unique custom field) |
+| TallyPrime | Optional voucher (no effect on the books) | Optional Purchase Order voucher | party ledger + Supplier Invoice No. | `orrfin:<key>` in the narration |
+| Business Central | unposted purchase invoice | PO, status Open (not released) | vendor no. + `vendorInvoiceNumber` | `orrfin:<key>` in a PO reference field |
+| SAP S/4HANA | parked supplier invoice | **purchase requisition** (no draft PO through the API) | invoicing party + `SupplierInvoiceIDByInvcgParty` + fiscal year | `orrfin:<key>` in the requisition text |
+| NetSuite | bill "Pending Approval" | PO "Pending Supervisor Approval" | `externalId` = idempotency key (native upsert) | `externalId` |
+| Zoho Books / Odoo | bill in `draft` | PO / RFQ in `draft` | vendor + `bill_number` / `ref` | `orrfin:<key>` in a reference field |
+| Others | see `docs/ERP_CONNECTORS.md` §4 | | | |
+
+**Rules that never change per ERP:** drafts only; a human finalises inside the ERP; one outbox row per document, keyed as below; UNKNOWN → look up first, never blind-retry. An ERP that cannot hold a draft at all (BUSY) gets a generated import file that a human imports. A **Sandbox** connector is read-only, so its write-back runs against the simulated adapter, and the UI says so.
 
 **Before the demo:**
 - In ERPNext → **Accounts Settings**, turn on **"Check Supplier Invoice Number Uniqueness"**. It checks per fiscal year.
@@ -363,9 +401,9 @@ Roughly $20–40 for the week. After the pitch, snapshot RDS, then stop or delet
 
 *(v2.1)* The schedule runs by **step** (`docs/PROMPTS.md`), not by calendar day. Started Sat 26 Sep; Step 1 was done on 29 Sep. The pitch date is not fixed yet: set it once Step 9 passes, allowing about four more steps after that.
 
-**ERPNext trial:** it lasts 14 days. Start it at Step 11 (not earlier), or budget for a paid Frappe Cloud plan, so it doesn't expire before the pitch.
+**ERPNext trial:** it lasts 14 days. Start it at Step 13 (not earlier), or budget for a paid Frappe Cloud plan, so it doesn't expire before the pitch. *(v2.2)* The Business Central trial lasts 30 days: start it at Step 17.
 
-**If you fall behind, cut in this order:** stretch goals → Control Graph visuals → request screen polish. **Never cut:** intake routing with approval chain and segregation of duties, matching, exception review, outbox write-back (bills and POs), audit trail.
+**If you fall behind, cut in this order:** stretch goals → simulated connectors beyond one per family (keep at least one SAP, one Oracle, one Microsoft) → Control Graph visuals → request screen polish. **Never cut:** intake routing with approval chain and segregation of duties, matching, exception review, outbox write-back (bills and POs), audit trail.
 
 | Steps | Milestone | Done when (acceptance tests) |
 |---|---|---|
@@ -375,19 +413,22 @@ Roughly $20–40 for the week. After the pitch, snapshot RDS, then stop or delet
 | 6–7 | **M3 Extraction.** Upload → file store → job → Claude → schema and arithmetic validation → review form with evidence; 12-PDF evaluation set. | Eval report with field accuracy saved. The injection PDF cannot produce `matched` with wrong totals. Killing the worker mid-job and restarting completes the job. |
 | 8 | **M4 Matching engine** (§6) + risk score + AI explanation from rule results only. | ≥14 pytest scenarios pass: clean match; price variance; over-receipt; partial receipt then a second invoice exceeding it (cumulative); duplicate key only; duplicate key + total; same file re-uploaded; bad GSTIN; IGST vs CGST mismatch; vendor mismatch; PO closed; unpaired line; ₹0.01 rounding accepted; stale PO. |
 | 9–10 | **M5 Invoice review + controls + Control Graph + Trust page.** Exception inbox ranked by ₹ at risk; side-by-side PO / receipt / invoice; approve / reject / request correction; audit hash chain; Control Graph from intake to draft bill. | Tests: uploader approval → 403; over-limit → 403; org A cannot read org B → 404. Audit event count equals state changes; hash chain verifies. |
-| 11–13 | **M6 Live ERPNext + outbox write-back** (§8): draft bills **and** draft POs. | **Failure-injection tests, one per document type:** the POST succeeds, then the adapter raises a timeout → the retry does a lookup → exactly **one** Purchase Invoice / Purchase Order exists in ERPNext and the outbox row is `CONFIRMED`. Approved request → draft PO in ERPNext → submitted by a human → pulled back as `po_open`. Manual check in the ERPNext UI. |
-| 14–15 | **M7 Deploy, rehearse and freeze.** AWS deploy, security review, 3 rehearsals, backup video, tag `demo-final`. | Demo runs cleanly twice in a row on the public URL. Trust page wording matches §13. RDS automated backups confirmed. |
+| 11–12 | **M5b Multi-ERP plug** *(v2.2)*. ERP research (`docs/ERP_CONNECTORS.md`); the `ErpAdapter` port extended with write and lookup methods + `capabilities()`; registry; `erp_connections` (additive migration); canonical dataset → per-ERP fixtures; shared contract suite; Connectors page with Live/Sandbox/Simulated badges. | The ERPNext fake passes the shared contract suite through the registry; all 182+ existing tests still pass; switching the active connection and syncing twice leaves row counts unchanged; rows from two connections never collide. |
+| 13–15 | **M6 Live ERPNext + outbox write-back** (§8): draft bills **and** draft POs, written once against the port so every adapter reuses them. | **Failure-injection tests, one per document type:** the POST succeeds, then the adapter raises a timeout → the retry does a lookup → exactly **one** Purchase Invoice / Purchase Order exists in ERPNext and the outbox row is `CONFIRMED`. Approved request → draft PO in ERPNext → submitted by a human → pulled back as `po_open`. Manual check in the ERPNext UI. |
+| 16–20 | **M6b Connectors** *(v2.2)*. Tally (live) + BUSY (sim); Business Central (live) + F&O (sim); SAP S/4HANA (sandbox read + sim write) + Business One (sim); Oracle Fusion + NetSuite (sim); Zoho Books + Odoo (live). | Each adapter passes the shared contract suite, plus a failure-injection test for its own lookup key (POST succeeds, then a timeout → lookup → exactly one document). Each **live** connector: "Sync" shows that ERP's POs in Orrfin, and one approved invoice creates exactly one draft in that ERP (checked in its UI). The Connectors page shows the right badge for each. |
+| 21–22 | **M7 Deploy, rehearse and freeze.** AWS deploy, security review, 3 rehearsals, backup video, tag `demo-final`. | Demo runs cleanly twice in a row on the public URL. Trust page wording matches §13. RDS automated backups confirmed. |
 
-**Stretch goals** (only after M6 passes):
-- SAP Business Accelerator Hub sandbox read tab. It is read-only by SAP's design.
+**Stretch goals** (only after M6b passes). *(v2.2: SAP sandbox and Tally moved into M6b.)*
 - Vendor quotes (attach 1–3 quotes, pick one before the PO).
 - New-vendor onboarding request.
 - Dashboard charts.
-- Tally XML sample-file parser (labelled as a mock).
+- Tally local agent (a small Windows service, so the cloud demo can reach Tally).
+- Further connectors on demand (Sage Intacct, Acumatica, Infor, Workday, Marg).
 
 **Human checkpoints:**
 - **Before Step 5:** the founder confirms the approval tiers and categories (§9 defaults).
-- **Before Step 11:** an ERPNext/GST practitioner (or a CA) checks the ERPNext tax setup and the `orrfin_ref` custom field.
+- **Before Step 13:** an ERPNext/GST practitioner (or a CA) checks the ERPNext tax setup and the `orrfin_ref` custom field.
+- **Before Step 16** *(v2.2)*: someone who uses Tally daily checks that "Optional voucher" is an acceptable draft for an accountant.
 - **After Step 8:** a CA reviews the matching tolerances and rounding rule.
 - **Before sharing the URL:** the `ecc:security-review` skill plus a second human look over auth and IAM.
 
@@ -401,7 +442,7 @@ Roughly $20–40 for the week. After the pitch, snapshot RDS, then stop or delet
 - [ ] Credit/debit notes and PO amendments supported, or explicitly excluded in the pilot agreement.
 - [ ] Staging environment, monitoring and alerting, a tested restore from backup.
 - [ ] Data-processing agreement and incident-response runbook (CERT-In 6-hour reporting).
-- [ ] Connector matches the pilot customer's real ERP. Most target customers run Tally, which needs the local agent.
+- [ ] Connector matches the pilot customer's real ERP. Most target customers run Tally, which needs the local agent. *(v2.2)* A **Simulated** connector must be rebuilt and tested against the customer's own test system before a pilot; all its "(unverified)" facts in `docs/ERP_CONNECTORS.md` must be checked.
 
 ---
 
@@ -415,18 +456,20 @@ Roughly $20–40 for the week. After the pitch, snapshot RDS, then stop or delet
 6. Clean invoice → matched → approved → draft bill appears in ERPNext live.
 7. Bad invoice (7% over price, IGST where CGST+SGST applies, near-duplicate number) → exception with ₹ at risk and a plain-English reason. The finance reviewer rejects it, with name and timestamp.
 8. Control Graph replay: intake → approvals → PO → receipt → invoice → match → decision → draft bill.
-9. Trust page, roadmap (Tally agent, Zoho, SAP), the ask.
+9. *(v2.2)* **Connectors page:** the same PO arrives from Tally (live on this laptop), Business Central (live trial) and SAP (SAP's official sandbox); badges show Live / Sandbox / Simulated for each ERP. One click switches the active ERP.
+10. Trust page, roadmap (Tally local agent, customer test systems for the simulated connectors), the ask.
 
 *(v2.1: this is now about 12 minutes; trim step 7 or 8 if the slot is 10.)*
 
 **Say:**
 - "Controlled prototype on synthetic data; draft-only; not production."
 - "Document AI runs on AWS Bedrock; inference may be processed outside India, and before pilots we will choose a routing that meets each customer's requirement."
+- *(v2.2)* "Live today on ERPNext, Tally, Business Central, Zoho Books and Odoo; reading SAP's official sandbox; Oracle, NetSuite, Dynamics F&O and SAP Business One are built to their published APIs and go live on a customer's test system."
 
 **Never say:**
 - "fully compliant"
 - "no data leaves India"
-- "works with every ERP"
+- "works with every ERP", or "integrated with SAP/Oracle" for a Simulated connector
 - any savings figure
 - any customer we don't have
 - the "$415M stack" comparison
@@ -437,11 +480,12 @@ Roughly $20–40 for the week. After the pitch, snapshot RDS, then stop or delet
 
 1. Will any real invoice be shown? (If yes, section 12 gates apply now.)
 2. Is India-only AI processing a hard promise for pilots?
-3. Is the pitch date fixed? *(29 Sep: moved later, date TBD. Start the ERPNext trial at Step 11 or budget for a paid plan.)*
+3. Is the pitch date fixed? *(29 Sep: moved later, date TBD. Start the ERPNext trial at Step 13 or budget for a paid plan.)*
 4. Solo build, or is any experienced engineer available? (Decides Next.js vs the htmx fallback.)
 5. Which ERP do the first design partners actually use?
 6. Do you control DNS for orrfin.ai?
 7. *(v2.1)* Are the §9 approval tiers (₹50,000 / ₹5,00,000) and demo categories (IT hardware, Office supplies, Professional services) right? Needed before Step 5.
+8. *(v2.2)* Do you have a work email (e.g. name@orrfin.ai) for the Business Central trial? Gmail is refused. Needed before Step 17.
 
 ---
 

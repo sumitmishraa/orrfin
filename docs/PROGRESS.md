@@ -4,7 +4,7 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 
 ## Current state
 - Step 0 (manual setup): Docker done; Bedrock access **pending**: founder opened an AWS support case (use-case form blocked); advised to file it as "Account and billing".
-- Steps 1, 3, 4, 5: done (29 Sep). Step 2: code done, live run blocked on Bedrock access. Steps 6-10 done (4 Oct). Next: Step 11 (live ERPNext: start the 14-day trial then). Bedrock still locked: local runs use AI_PROVIDER=fake. Steps renumbered in v2.1 (15 steps).
+- Steps 1, 3, 4, 5: done (29 Sep). Step 2: code done, live run blocked on Bedrock access. Steps 6-10 done (4 Oct). Step 11 (ERP research) done (5 Oct). Next: Step 12 (multi-ERP plug); live ERPNext is now Step 13 (start the 14-day trial then). Bedrock still locked: local runs use AI_PROVIDER=fake. Steps renumbered in v2.2 (22 steps).
 
 ## Decisions so far
 - Plan: docs/BUILD_PLAN.md v2.1 (intake-to-procure + draft PO added 29 Sep). Prompts: docs/PROMPTS.md (15 steps).
@@ -57,3 +57,9 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 
 **Step 10 — Control Graph + Trust (4 Oct).** `GET /control-graph` (invoice or request chain, clickable); `/trust` page uses §13 "Say" wording; nav + empty/loading states. Live walk at :3001 passed (role buttons, SoD refusals, chain verify). 182 backend tests; tsc/lint/build clean.
 - Open: gstack-design-review pass not run (see reply); real AI accuracy pending Bedrock; CA review of tolerances (§11).
+
+**Plan v2.2 + Step 11 — multi-ERP connectors, research (5 Oct).** Founder approved: connect many ERPs, each labelled Live / Sandbox / Simulated; design the plug before write-back; §2 and §8 now say "the connected ERP" (safety rules unchanged, lookup key per ERP).
+- Research: `docs/ERP_CONNECTORS.md` (11 ERPs: catalogue, per-ERP record names, draft meaning + lookup key, gotchas, founder sign-ups, sources). "(unverified)" facts get checked in the step that builds each connector.
+- Live: ERPNext, Tally (Educational mode, XML :9000), Business Central (30-day trial, needs a work email), Zoho Books (free), Odoo (Docker). Sandbox: SAP S/4HANA read (api.sap.com key). Simulated: SAP write (purchase requisition as draft PO), SAP B1, Oracle Fusion, NetSuite, Dynamics F&O, BUSY.
+- BUILD_PLAN v2.2 (§0 changes 17–21, §2, §3, §4, §5 `erp_connections` + `erp_connection_id`, §8 per-ERP table, §11 M5b/M6b, §12, §13, §14 Q8); ADR 0004; PROMPTS renumbered to 22 steps (12 plug, 13–15 ERPNext live + outbox, 16–20 connectors, 21 deploy, 22 final).
+- Open: founder needs a work email (e.g. @orrfin.ai) before Step 17. Docs only; no code changed.

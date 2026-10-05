@@ -2,7 +2,7 @@
 
 Copy one prompt at a time into Claude Code. Each prompt builds one small, testable piece and ends with something you can **see on your laptop**.
 
-*(v2.1, 29 Sep: added Step 5 "Intake-to-procure" and Step 13 "Draft POs into ERPNext". Later steps were renumbered; see BUILD_PLAN "v2.1 changes".)*
+*(v2.1, 29 Sep: added Step 5 "Intake-to-procure" and the "Draft POs" step. v2.2, 5 Oct: added ERP research (11), the multi-ERP plug (12) and five connector steps (16–20); later steps renumbered. See BUILD_PLAN "v2.1/v2.2 changes" and docs/ERP_CONNECTORS.md.)*
 
 ---
 
@@ -21,7 +21,8 @@ Copy one prompt at a time into Claude Code. Each prompt builds one small, testab
 |---|---|
 | The app | http://localhost:3000 (or :3001 if you start with `-WebPort 3001`) |
 | The API and its interactive docs | http://localhost:8000/docs |
-| The ERPNext demo system (from Step 11) | your Frappe Cloud URL |
+| The ERPNext demo system (from Step 13) | your Frappe Cloud URL |
+| The Connectors page (from Step 12) | http://localhost:3000/connectors |
 
 **Starting and stopping everything:** run `.\scripts\dev.ps1` in the VS Code terminal to start everything, and `.\scripts\dev.ps1 -Stop` to stop it. If another project uses port 3000, add `-WebPort 3001`.
 
@@ -39,11 +40,20 @@ Copy one prompt at a time into Claude Code. Each prompt builds one small, testab
 | 8 | Matching engine | invoice |
 | 9 | Exception inbox, approvals, audit | invoice |
 | 10 | Control Graph, Trust page, polish | both |
-| 11 | Live ERPNext read | both |
-| 12 | Draft bills into ERPNext (outbox) | invoice |
-| 13 | **Draft POs into ERPNext** (new) | P2P |
-| 14 | Deploy to AWS | both |
-| 15 | Final review and rehearsal | both |
+| 11 | **ERP research** ✅ (new) | ERP |
+| 12 | **Multi-ERP plug + Connectors page** (new) | ERP |
+| 13 | Live ERPNext read | both |
+| 14 | Draft bills into the ERP (outbox) | invoice |
+| 15 | Draft POs into the ERP | P2P |
+| 16 | **Tally (live) + BUSY (sim)** (new) | ERP |
+| 17 | **Dynamics Business Central (live) + F&O (sim)** (new) | ERP |
+| 18 | **SAP S/4HANA (sandbox) + Business One (sim)** (new) | ERP |
+| 19 | **Oracle Fusion + NetSuite (sim)** (new) | ERP |
+| 20 | **Zoho Books + Odoo (live)** (new) | ERP |
+| 21 | Deploy to AWS | both |
+| 22 | Final review and rehearsal | both |
+
+If time runs short, cut Step 19 and the simulated half of Steps 16–18 first (BUILD_PLAN §11 cut order). Keep at least one SAP, one Oracle and one Microsoft card.
 
 Step 2 needs Bedrock access. If that is still pending, do Steps 3–5 first; they need no AI.
 
@@ -169,7 +179,7 @@ Tests FIRST for every rule in §9 and the M2 acceptance tests in §11; then impl
   out of order, over limit), approve / reject / return with reason. Amount change restarts the chain.
 - Every status change writes its audit event in the same transaction.
 - UI: "New request" form; My requests; Buyer queue; Approvals inbox; a request page with a status timeline
-  (submitted → with buyer → step 1 → step 2 → approved). Approved requests show "Ready for PO" (the PO itself is drafted in Step 13).
+  (submitted → with buyer → step 1 → step 2 → approved). Approved requests show "Ready for PO" (the PO itself is drafted in Step 15).
 Done when: tests pass, and I can log in as requester → buyer → approver → finance and walk a ₹2,40,000 laptop request to "approved",
 and see the requester blocked from approving it.
 Finish: PROGRESS.md, commit "step 5: intake-to-procure", reply ≤12 lines.
@@ -271,7 +281,49 @@ Finish: PROGRESS.md, commit "step 10", reply ≤10 lines, including screenshots 
 
 ---
 
-## Step 11 — Connect the real ERPNext (start the 14-day trial now)
+## Step 11 — ERP research: which ERPs, how to reach each one ✅ done 5 Oct
+
+Output: `docs/ERP_CONNECTORS.md`. It covers:
+- the catalogue of 11 ERPs with a Live/Sandbox/Simulated label for each;
+- what each Orrfin record is called in each ERP;
+- the per-ERP "draft" and lookup key for §8;
+- gotchas;
+- the sign-ups you need, with source links.
+
+Facts marked "(unverified)" are checked in the step that builds that connector.
+
+---
+
+## Step 12 — The multi-ERP plug (one port, many ERPs) (new in v2.2)
+
+`/model opus` · **Skills:** `ecc:hexagonal-architecture`, `ecc:database-migrations`
+
+```
+STEP 12 — Multi-ERP plug. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §2, §4 (connector rules), §5 (erp_connections) and §8 (per-ERP table),
+and docs/ERP_CONNECTORS.md §1–§4. Use skills: ecc:hexagonal-architecture, ecc:database-migrations (also explore-codebase to read ports/erp.py,
+adapters/erpnext*.py, modules/sync and tests/contract first).
+- Extend the ErpAdapter port (app/ports/erp.py): capabilities() (can_read, can_write_bill, can_write_po, label live|sandbox|simulated),
+  create_draft_bill, find_bill(vendor_ref, supplier_invoice_no), create_draft_po, find_po(orrfin_key), with Orrfin-side DraftBill/DraftPo models
+  and clear result/exception types (Created, Rejected=validation error, Unknown=timeout/5xx). ERPNext implements them against its fixtures for now.
+- app/adapters/registry.py: get_adapter(connection) picks the adapter by erp_connections.system + mode (fake|live). Only sync calls it.
+- Additive migration: erp_connections table; erp_connection_id on vendors, purchase_orders, goods_receipts, erp_outbox; uniqueness becomes
+  (org_id, erp_connection_id, erp_ref). Backfill: one "ERPNext · simulated" connection per org, active. seed_demo creates one row per catalogue ERP
+  (inactive except ERPNext).
+- One canonical demo dataset (the current 5 vendors / 8 POs / 8 receipts) + a renderer interface so each connector step only adds a
+  "render to <ERP> format" function. Move make_erpnext_fixtures.py onto it.
+- Shared contract suite tests/contract/test_erp_adapter_contract.py, parametrized over every registered adapter: same vendors, POs (lines, Decimal
+  money, GST %), receipts; drafts and lookups behave per capabilities(); a sandbox adapter refuses writes with a clear error.
+- UI: /connectors page (admin): a card per catalogue ERP with segment, logo-free name, Live/Sandbox/Simulated badge (colours from BRAND.md), status,
+  "Make active" button (audited). Simulated cards say "Built to <ERP>'s published API. Not connected to a live system."
+Tests: all existing tests still pass; contract suite green for ERPNext; switching connection + syncing twice keeps row counts; two connections with
+the same erp_ref don't collide; making a connection active writes an audit event; non-admin → 403.
+Done when: /connectors shows the catalogue with badges, and Sync still shows the ERPNext POs.
+Finish: update docs/adr/0004-multi-erp-connectors.md if the build changed any decision, ARCHITECTURE.md, PROGRESS.md, commit "step 12", reply ≤10 lines.
+```
+
+---
+
+## Step 13 — Connect the real ERPNext (start the 14-day trial now)
 
 **By hand first:**
 - Sign up at frappe.io/cloud → ERPNext trial → create company "Orrfin Demo Pvt Ltd" (India, INR).
@@ -282,69 +334,200 @@ Finish: PROGRESS.md, commit "step 10", reply ≤10 lines, including screenshots 
 `/model sonnet` · **Skills:** `ecc:api-connector-builder`, `debug-issue`
 
 ```
-STEP 11 — Live ERPNext read. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §2 and §8 (setup parts only).
+STEP 13 — Live ERPNext read. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §2 and §8 (setup parts only), docs/ERP_CONNECTORS.md (ERPNext rows).
 Use skills: ecc:api-connector-builder, debug-issue.
-- LiveErpnextAdapter using token auth from env vars ERPNEXT_URL, ERPNEXT_API_KEY and ERPNEXT_API_SECRET (tell me where to put them locally; never commit them).
-- A seed script that creates the Step 4 fixture data in ERPNext through the API (vendors, items, POs submitted, receipts).
+- LiveErpnextAdapter (implements the Step 12 port) using token auth from env vars ERPNEXT_URL, ERPNEXT_API_KEY and ERPNEXT_API_SECRET
+  (tell me where to put them locally; never commit them). Registered as erpnext + mode live; the connection's label becomes "live".
+- A seed script that creates the canonical demo data in ERPNext through the API (vendors, items, POs submitted, receipts).
 - Check that the orrfin_ref custom field exists on Purchase Order; fail with a clear message if not.
-- A config switch: ERP_MODE=fake|live.
-- Record the real response shapes and update the contract tests.
-Done when: with ERP_MODE=live, "Sync from ERP" shows ERPNext's POs in Orrfin.
-Finish: PROGRESS.md, commit "step 11", reply ≤10 lines, including what I must click in ERPNext.
-```
-
----
-
-## Step 12 — Write draft bills into ERPNext exactly once
-
-`/model opus` · **Skills:** `ecc:tdd-workflow`, `ecc:python-testing`
-
-```
-STEP 12 — Outbox write-back (bills). Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §8 in full.
-Use skills: ecc:tdd-workflow, ecc:python-testing.
-Implement the §8 protocol exactly, as a generic outbox (doc_type) so Step 13 can reuse it: erp_outbox states,
-lookup by supplier + bill_no before any retry, remarks tag orrfin:<key>, docstatus 0 (draft).
-Tests first, including the failure test: the POST succeeds, then the adapter raises a timeout → the retry does a lookup →
-exactly one Purchase Invoice exists and the row ends CONFIRMED. Also: a validation error → FAILED, shown in the UI.
-UI: the invoice page shows ERP sync status and a "Retry sync" button.
-Done when: tests pass, and approving a clean invoice creates exactly one draft in ERPNext (check the ERPNext UI).
-Finish: PROGRESS.md, commit "step 12", reply ≤10 lines.
-```
-
----
-
-## Step 13 — Draft POs into ERPNext exactly once (new in v2.1)
-
-`/model opus` · **Skills:** `ecc:tdd-workflow`, `ecc:python-testing`
-
-```
-STEP 13 — Draft PO write-back. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §2 (PO row), §5 (erp_outbox) and §8 "Draft Purchase Orders".
-Use skills: ecc:tdd-workflow, ecc:python-testing.
-Reuse the Step 12 outbox with doc_type = purchase_order:
-- The final approval step creates the outbox row + job + audit event in the same transaction as status = approved.
-- Push a draft Purchase Order (docstatus 0) with supplier, schedule_date, approved lines and orrfin_ref = the key.
-- UNKNOWN → GET Purchase Order filtered on orrfin_ref before any retry.
-- CONFIRMED → request status po_drafted; the next pull sync links the submitted PO (origin = orrfin) → po_open.
-Tests first: the POST succeeds then times out → the retry looks up → exactly one PO, row CONFIRMED; a validation error → FAILED shown on the request;
-the approval + outbox row are atomic (no outbox row if the approval fails).
-UI: the request page shows PO status (drafting / drafted as PUR-ORD-xxxx / open) and "Retry sync".
-Done when: tests pass; approving the laptop request creates exactly one draft PO in ERPNext; after I submit it in ERPNext and click Sync, the request shows "PO open".
+- Record the real response shapes and update the contract tests (the shared suite must pass for both fake and live-recorded fixtures).
+Done when: with the ERPNext connection set to live, "Sync from ERP" shows ERPNext's POs in Orrfin.
 Finish: PROGRESS.md, commit "step 13", reply ≤10 lines, including what I must click in ERPNext.
 ```
 
 ---
 
-## Step 14 — Put it on AWS (public demo link)
+## Step 14 — Write draft bills into the ERP exactly once
+
+`/model opus` · **Skills:** `ecc:tdd-workflow`, `ecc:python-testing`
+
+```
+STEP 14 — Outbox write-back (bills). Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §8 in full (incl. the v2.2 per-ERP table).
+Use skills: ecc:tdd-workflow, ecc:python-testing.
+Implement the §8 protocol exactly, as a generic outbox (doc_type, erp_connection_id) that only calls the port (create_draft_bill / find_bill),
+so Step 15 and every later connector reuse it unchanged. ERPNext: lookup by supplier + bill_no before any retry, remarks tag orrfin:<key>,
+docstatus 0 (draft). If the active connection can't write bills (capabilities), the approve button explains why and nothing is queued.
+Tests first, including the failure test: the POST succeeds, then the adapter raises a timeout → the retry does a lookup →
+exactly one Purchase Invoice exists and the row ends CONFIRMED. Also: a validation error → FAILED, shown in the UI.
+Make the failure test a reusable fixture so Steps 16–20 run it for each adapter.
+UI: the invoice page shows ERP sync status (with the ERP's name) and a "Retry sync" button.
+Done when: tests pass, and approving a clean invoice creates exactly one draft in ERPNext (check the ERPNext UI).
+Finish: PROGRESS.md, commit "step 14", reply ≤10 lines.
+```
+
+---
+
+## Step 15 — Draft POs into the ERP exactly once
+
+`/model opus` · **Skills:** `ecc:tdd-workflow`, `ecc:python-testing`
+
+```
+STEP 15 — Draft PO write-back. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §2 (PO row), §5 (erp_outbox) and §8 "Draft Purchase Orders" + per-ERP table.
+Use skills: ecc:tdd-workflow, ecc:python-testing.
+Reuse the Step 14 outbox with doc_type = purchase_order (port: create_draft_po / find_po):
+- The final approval step creates the outbox row + job + audit event in the same transaction as status = approved.
+- ERPNext: push a draft Purchase Order (docstatus 0) with supplier, schedule_date, approved lines and orrfin_ref = the key.
+- UNKNOWN → find_po(orrfin_key) before any retry.
+- CONFIRMED → request status po_drafted; the next pull sync links the submitted PO (origin = orrfin) → po_open.
+Tests first: the POST succeeds then times out → the retry looks up → exactly one PO, row CONFIRMED; a validation error → FAILED shown on the request;
+the approval + outbox row are atomic (no outbox row if the approval fails). Reusable per-adapter fixture, as in Step 14.
+UI: the request page shows PO status (drafting / drafted as PUR-ORD-xxxx / open) and "Retry sync".
+Done when: tests pass; approving the laptop request creates exactly one draft PO in ERPNext; after I submit it in ERPNext and click Sync, the request shows "PO open".
+Finish: PROGRESS.md, commit "step 15", reply ≤10 lines, including what I must click in ERPNext.
+```
+
+---
+
+## Step 16 — Tally Prime (live) + BUSY (simulated) (new in v2.2)
+
+**By hand first:**
+1. Go to tallysolutions.com → Download TallyPrime → install it.
+2. Open TallyPrime → choose **Work in Educational Mode** (free).
+3. Create company "Orrfin Demo Pvt Ltd" (India, GST on).
+4. Press **F1 (Help) → Settings → Connectivity** → set "TallyPrime acts as" to **Both**, port **9000** → save. (If the menu differs, tell Claude what you see.)
+5. Leave TallyPrime open while Claude works.
+
+`/model sonnet` · **Skills:** `ecc:api-connector-builder`, `ecc:regex-vs-llm-structured-text`
+
+```
+STEP 16 — Tally + BUSY connectors. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §8 (per-ERP table), docs/ERP_CONNECTORS.md (Tally, BUSY rows + §5).
+Use skills: ecc:api-connector-builder, ecc:regex-vs-llm-structured-text (parse Tally XML with a real XML parser, never regex or AI).
+First verify every Tally "(unverified)" fact in ERP_CONNECTORS.md against help.tallysolutions.com (Educational-mode dates, ISOPTIONAL, REFERENCE tag,
+HTTP-server menu path) and update the file.
+- TallyAdapter (mode live: POST XML envelopes to TALLY_URL, default http://localhost:9000; mode fake: recorded XML fixtures).
+  Vendors = ledgers under Sundry Creditors (GSTIN from the ledger's GST details); POs = Purchase Order vouchers; receipts = Receipt Note vouchers.
+  Draft bill = Optional Purchase voucher; draft PO = Optional Purchase Order voucher; lookups per §8 table. Money as Decimal; Tally's signed amounts handled.
+- A seed script that loads the canonical dataset into my Tally company over XML (dates allowed in Educational mode).
+- BusyAdapter (simulated, file-based): renders the canonical dataset to BUSY's XML import format; "draft" = an import file a human imports.
+- Both join the shared contract suite and the Step 14/15 failure-injection fixtures.
+Done when: with Tally active, Sync shows my Tally POs in Orrfin; approving a clean invoice creates exactly one Optional Purchase voucher in Tally
+(I check Display More Reports → Exception Reports → Optional Vouchers); /connectors shows Tally "Live" and BUSY "Simulated".
+Finish: ERP_CONNECTORS.md updated, PROGRESS.md, commit "step 16", reply ≤10 lines, including what I must click in Tally.
+```
+
+---
+
+## Step 17 — Microsoft Dynamics 365: Business Central (live) + Finance & Operations (simulated) (new in v2.2)
+
+**By hand first** (start the 30-day trial only now):
+1. You need a **work email** (e.g. you@orrfin.ai); Gmail is refused. No work email? Start a Microsoft 365 Business trial first; it gives you one.
+2. Go to dynamics.microsoft.com → Business Central → **Try for free** → sign up with the work email → choose country **India**.
+3. Go to entra.microsoft.com → App registrations → **New registration** "Orrfin" → copy the Application (client) ID and Directory (tenant) ID → Certificates & secrets → **New client secret** → copy the value (keep it out of chat).
+4. API permissions → Add → **Dynamics 365 Business Central** → Application permissions → `API.ReadWrite.All` → **Grant admin consent**.
+5. In Business Central, search "Microsoft Entra Applications" → New → paste the client ID → State Enabled → add permission set **D365 BUS FULL ACCESS**.
+
+`/model sonnet` · **Skills:** `ecc:api-connector-builder`, `ecc:hexagonal-architecture`
+
+```
+STEP 17 — Microsoft connectors. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §8 (per-ERP table), docs/ERP_CONNECTORS.md (Business Central, F&O rows).
+Use skills: ecc:api-connector-builder, ecc:hexagonal-architecture.
+First verify the BC and F&O "(unverified)" facts against learn.microsoft.com (purchaseReceipts resource, PO reference field, duplicate check) and update the file.
+- BusinessCentralAdapter: OAuth client credentials (env BC_TENANT_ID, BC_CLIENT_ID, BC_CLIENT_SECRET, BC_ENVIRONMENT, BC_COMPANY_ID; tell me where
+  to put them; never commit). API v2.0: vendors, purchaseOrders, purchaseReceipts, purchaseInvoices (unposted = draft). Lookups per §8.
+- A seed script that loads the canonical dataset into my BC company (vendors with GSTIN, items, POs, receipts).
+- DynamicsFoAdapter (simulated): fixtures in the OData data-entity shapes (VendorsV2, PurchaseOrderHeadersV2/LinesV2, product receipts,
+  VendorInvoiceHeaders); draft = pending vendor invoice.
+- Both join the shared contract suite and the failure-injection fixtures.
+Done when: with BC active, Sync shows my BC POs; approving a clean invoice creates exactly one unposted purchase invoice in BC (Purchasing → Purchase Invoices);
+/connectors shows BC "Live" and F&O "Simulated".
+Finish: ERP_CONNECTORS.md updated, PROGRESS.md, commit "step 17", reply ≤10 lines, including what I must click in BC.
+```
+
+---
+
+## Step 18 — SAP: S/4HANA (sandbox read + simulated write) + Business One (simulated) (new in v2.2)
+
+**By hand first:** go to **api.sap.com** → Log on (create a free SAP account) → open any S/4HANA Cloud API → click **Show API Key** → copy it (keep it out of chat).
+
+`/model sonnet` · **Skills:** `ecc:api-connector-builder`, `ecc:hexagonal-architecture`
+
+```
+STEP 18 — SAP connectors. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §2 (PO row) and §8 (per-ERP table), docs/ERP_CONNECTORS.md (SAP rows).
+Use skills: ecc:api-connector-builder, ecc:hexagonal-architecture.
+First check on api.sap.com which S/4HANA Cloud APIs still have a live sandbox (supplier/business partner, purchase order V2 or its V4 successor,
+material document, supplier invoice, purchase requisition) and how a supplier invoice is parked via the API; update ERP_CONNECTORS.md.
+- SapS4Adapter, two modes in one adapter:
+  sandbox (env SAP_API_KEY, header APIKey, sandbox base URL): reads SAP's sample suppliers, POs and goods receipts; capabilities = read only.
+  simulated: fixtures in the same OData shapes rendered from the canonical dataset; draft bill = parked supplier invoice; draft PO = purchase
+  requisition (BUILD_PLAN §8); lookups per §8. The UI says "write-back simulated" next to SAP.
+- SapB1Adapter (simulated): Service Layer shapes (BusinessPartners, PurchaseOrders, PurchaseDeliveryNotes, PurchaseInvoices, Drafts).
+- Map SAP sample POs that lack GSTIN gracefully (vendor gstin None → the matching engine's VENDOR rules still run on Orrfin's side).
+- Both join the shared contract suite; the simulated modes also run the failure-injection fixtures.
+Done when: with SAP active (sandbox), Sync shows real SAP sandbox POs in Orrfin; /connectors shows SAP S/4HANA "Sandbox · write simulated" and SAP Business One "Simulated".
+Finish: ERP_CONNECTORS.md updated, PROGRESS.md, commit "step 18", reply ≤10 lines.
+```
+
+---
+
+## Step 19 — Oracle: Fusion Cloud ERP + NetSuite (simulated) (new in v2.2)
+
+`/model sonnet` · **Skills:** `ecc:api-connector-builder`, `ecc:hexagonal-architecture`
+
+```
+STEP 19 — Oracle connectors. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §8 (per-ERP table), docs/ERP_CONNECTORS.md (Oracle Fusion, NetSuite rows).
+Use skills: ecc:api-connector-builder, ecc:hexagonal-architecture.
+First verify the Oracle "(unverified)" facts on docs.oracle.com (receipt read resource, draftPurchaseOrders, invoice validation state) and the NetSuite
+externalId upsert, and update ERP_CONNECTORS.md.
+- OracleFusionAdapter (simulated): fixtures shaped like /fscmRestApi/resources/11.13.18.05/ suppliers, purchaseOrders, receipts, invoices
+  (items[] + links paging); draft bill = unvalidated Payables invoice; lookups per §8 (q= filter on Supplier + InvoiceNumber).
+- NetSuiteAdapter (simulated): SuiteTalk REST shapes (vendor, purchaseOrder, itemReceipt, vendorBill); writes use PUT .../eid:<idempotency key>,
+  so the adapter shows native idempotency (lookup = GET by eid).
+- Both join the shared contract suite and the failure-injection fixtures.
+Done when: tests pass; with each active, Sync shows the canonical POs; /connectors shows both "Simulated".
+Finish: ERP_CONNECTORS.md updated, PROGRESS.md, commit "step 19", reply ≤10 lines.
+```
+
+---
+
+## Step 20 — Zoho Books (live) + Odoo (live, on your laptop) (new in v2.2)
+
+**By hand first:**
+1. Go to zoho.com/in/books → **Sign up free** → India → create organisation "Orrfin Demo Pvt Ltd" (GST registered).
+2. Go to **api-console.zoho.in** → Add Client → **Self Client** → copy the Client ID and Client Secret (keep them out of chat). Claude will tell you which scope to paste to get a code.
+3. Odoo: nothing to do. Claude starts it in Docker.
+
+`/model sonnet` · **Skills:** `ecc:api-connector-builder`, `ecc:docker-patterns`
+
+```
+STEP 20 — Zoho Books + Odoo. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §8 (per-ERP table), docs/ERP_CONNECTORS.md (Zoho, Odoo rows + §5).
+Use skills: ecc:api-connector-builder, ecc:docker-patterns.
+First verify the Zoho "(unverified)" facts (draft bills, purchase receives on the Books API, duplicate bill warning) and update ERP_CONNECTORS.md.
+- ZohoBooksAdapter: OAuth via accounts.zoho.in (env ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN, ZOHO_ORG_ID; walk me through getting the
+  refresh token; never commit); base https://www.zohoapis.in/books/v3; vendors (contacts), purchaseorders, receipts per the verified API, bills (draft).
+- OdooAdapter: add an `odoo` service (Odoo 19 Community + its own Postgres) to infra/docker-compose.yml under a profile so it only starts when asked;
+  JSON-2 API with a Bearer API key; res.partner, purchase.order, stock.picking (incoming), account.move in_invoice (draft). Install the Purchase,
+  Inventory and Invoicing apps by script.
+- Seed scripts that load the canonical dataset into both.
+- Both join the shared contract suite and the failure-injection fixtures.
+Done when: with each active, Sync shows its POs; approving a clean invoice creates exactly one draft bill in Zoho Books and one in Odoo (I check both UIs);
+/connectors shows both "Live".
+Finish: ERP_CONNECTORS.md updated, README (how to start Odoo), PROGRESS.md, commit "step 20", reply ≤10 lines, including what I must click.
+```
+
+---
+
+## Step 21 — Put it on AWS (public demo link)
 
 **By hand first:** BUILD_PLAN §10 **B, C, E**: S3 bucket, RDS database, EC2 server, Elastic IP, DNS.
 
 `/model sonnet` · **Skills:** `ecc:deployment-patterns`, `ecc:docker-patterns`
 
 ```
-STEP 14 — Deploy. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §9 (IAM) and §10 E–F.
+STEP 21 — Deploy. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §9 (IAM) and §10 E–F.
 Use skills: ecc:deployment-patterns, ecc:docker-patterns.
 - S3 implementation of FileStore; production docker-compose (api, worker, web, caddy); infra/deploy.sh (git tag → build → migrate → up).
-- Generate the exact inline IAM policy JSON for my bucket and secrets (ask me for the ARNs).
+- Generate the exact inline IAM policy JSON for my bucket and secrets (ask me for the ARNs). ERP credentials (ERPNext, BC, SAP key, Zoho) go into
+  Secrets Manager too. Tally and Odoo stay on the laptop: their cards say "laptop only" on the public URL.
 - Secrets read from Secrets Manager at startup; nothing in the repo.
 - Give me numbered, click-by-click steps to run deploy.sh via Session Manager.
 Done when: https://<my domain or ip.sslip.io> shows the login page and the full flow works there.
@@ -353,17 +536,18 @@ Finish: PROGRESS.md, commit and tag "demo-1", reply ≤12 lines.
 
 ---
 
-## Step 15 — Final review, QA and rehearsal
+## Step 22 — Final review, QA and rehearsal
 
 `/model sonnet` · **Skills:** `ecc:security-review`, `gstack-qa`
 
 ```
-STEP 15 — Pre-demo check. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §11 M7, §12 and §13.
+STEP 22 — Pre-demo check. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §11 M7, §12 and §13.
 Use skills: ecc:security-review, then gstack-qa on the public URL.
-- Security review of auth, SoD (requests and invoices), IAM, secrets, uploads. Fix only high and critical findings.
-- QA the full §13 demo script end to end (intake → PO → invoice → bill); fix blockers only.
+- Security review of auth, SoD (requests and invoices), IAM, secrets (incl. every ERP credential), uploads. Fix only high and critical findings.
+- QA the full §13 demo script end to end (intake → PO → invoice → bill → Connectors page); fix blockers only.
+- Check every connector badge and its wording against §13 "Say / Never say".
 - Confirm RDS automated backups are on.
-- Write docs/DEMO_SCRIPT.md: click-by-click for my pitch, with the exact demo request and file to use at each step.
+- Write docs/DEMO_SCRIPT.md: click-by-click for my pitch, with the exact demo request and file to use at each step, and which ERP to make active when.
 Done when: the demo runs cleanly twice in a row.
 Finish: PROGRESS.md, tag "demo-final", reply ≤12 lines.
 ```

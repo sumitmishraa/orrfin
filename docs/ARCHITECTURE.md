@@ -13,7 +13,7 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 |---|---|---|---|
 | Web app | `frontend/` | One placeholder page that checks the API is up | Login, intake requests and approvals, invoices, POs, audit (Steps 3–10) |
 | API | `backend/app/` | `GET /health`; settings from env; DB engine | Business modules and routes |
-| Worker | `backend/app/worker.py` | Not built yet | Jobs table loop: extract, erp_pull, erp_push for bills and POs (Steps 4, 7, 12, 13) |
+| Worker | `backend/app/worker.py` | Not built yet | Jobs table loop: extract, erp_pull, erp_push for bills and POs (Steps 4, 7, 14, 15) |
 | Database | `infra/docker-compose.yml` | Postgres 16, empty; Alembic ready | Schema from §5 (Step 3) |
 | CI | `.github/workflows/ci.yml` | Migrations + pytest against Postgres | Same, with more tests |
 
@@ -38,7 +38,7 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `backend/app/errors.py` | Business refusals (403/404/409/422) with plain-English reasons |
 | `backend/app/seed_demo.py` | Demo org, 5 users, 3 categories, 3 approval tiers (idempotent) |
 | `backend/app/ports/` | Interfaces: Extractor, ErpAdapter, FileStore, Clock |
-| `backend/app/adapters/` | Implementations of the ports; the only place ERPNext field names may appear (`erpnext.py` translates, `erpnext_fake.py` serves `seed/erpnext/`) |
+| `backend/app/adapters/` | Implementations of the ports; the only place ERP-specific field names may appear (`erpnext.py` translates, `erpnext_fake.py` serves `seed/erpnext/`). *Planned (v2.2, Steps 12–20):* `registry.py` plus one adapter per ERP (Tally, BUSY, Business Central, Dynamics F&O, SAP S/4HANA, SAP Business One, Oracle Fusion, NetSuite, Zoho Books, Odoo), each labelled Live / Sandbox / Simulated. Catalogue and per-ERP mapping: [ERP_CONNECTORS.md](ERP_CONNECTORS.md) |
 | `frontend/src/app/(app)/` | Logged-in pages: Inbox, Requests, Invoices (list, upload, review/match/decision), POs, Vendors, Audit, Control Graph, Trust |
 | `frontend/src/proxy.ts`, `next.config.ts` | Redirect to /login without a session cookie; `/api/*` is forwarded to FastAPI (same-origin cookie) |
 | `backend/alembic/` | Migrations (additive only during demo week) |
@@ -63,3 +63,4 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 - [ADR 0001](adr/0001-postgres-driver-pg8000.md): pg8000 Postgres driver (Windows blocks psycopg's DLL).
 - [ADR 0002](adr/0002-app-database-role.md): the app runs as the restricted `orrfin_app` role (`SET ROLE`), so it can't rewrite audit events.
 - [ADR 0003](adr/0003-ai-provider-and-fake-extractor.md): one AI port, three providers; the answer-key stand-in is always labelled; AI outages fall back to manual entry.
+- [ADR 0004](adr/0004-multi-erp-connectors.md): one ERP port, 11 connectors, each labelled Live / Sandbox / Simulated; write-back built once against the port.
