@@ -34,7 +34,7 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `backend/app/modules/invoices/` | Upload, `extract` job, validation (`validation.py`), edits/confirm, `match_job.py` (DB ↔ engine bridge) |
 | `backend/app/modules/matching/` | **Pure** §6 rules engine: `engine.py`, `config.py` (version, tolerances, risk weights), template `explain.py` |
 | `backend/app/modules/review/` | Invoice decisions with SoD, re-match, audit list/timeline/verify, Control Graph |
-| `backend/app/adapters/claude_ai.py`, `fake_extractor.py`, `local_filestore.py` | Claude extraction + explanation (Bedrock / Anthropic API), labelled answer-key stand-in, local file store |
+| `backend/app/adapters/ai_prompts.py`, `gemini_ai.py`, `claude_ai.py`, `fake_extractor.py`, `local_filestore.py` | Shared AI prompts; Gemini extraction + explanation (working provider, ADR 0005); Claude (Bedrock / Anthropic API); labelled answer-key stand-in; local file store |
 | `backend/app/errors.py` | Business refusals (403/404/409/422) with plain-English reasons |
 | `backend/app/seed_demo.py` | Demo org, 5 users, 3 categories, 3 approval tiers (idempotent) |
 | `backend/app/ports/` | Interfaces: Extractor, ErpAdapter, FileStore, Clock |

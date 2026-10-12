@@ -45,7 +45,7 @@ def same(field: str, got, want) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--provider", choices=["bedrock", "anthropic", "fake"], required=True)
+    parser.add_argument("--provider", choices=["gemini", "bedrock", "anthropic", "fake"], required=True)
     parser.add_argument("--out", type=Path, default=EVAL_DIR / "report.md")
     args = parser.parse_args()
     os.environ["AI_PROVIDER"] = args.provider

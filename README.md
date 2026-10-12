@@ -58,8 +58,9 @@ above → manager, finance, then admin.
 
 ## Invoices (Steps 7-10)
 
-**AI reader:** set `AI_PROVIDER` in `.env` to `bedrock` (the plan; needs Bedrock model access, see
-`docs/spikes.md`), `anthropic` (with `ANTHROPIC_API_KEY`), or `fake`. `fake` reads only the 12 evaluation
+**AI reader:** set `AI_PROVIDER` in `.env` to `gemini` (the working choice for now: paste a key from
+https://aistudio.google.com/apikey into `GEMINI_API_KEY`), `bedrock` (the target; needs Bedrock model access, see
+`docs/spikes.md`), `anthropic` (with `ANTHROPIC_API_KEY`), or `fake`. See `docs/adr/0005-gemini-until-bedrock.md`. `fake` reads only the 12 evaluation
 PDFs, from their answer keys, and every screen labels it "Simulated reading". Other PDFs go to manual entry.
 
 **Try it:** as Vikram (finance) → **Invoices** → **Upload invoice PDF** → pick a file from `evals/extraction/`

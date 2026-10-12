@@ -19,6 +19,8 @@ dependencies = [
     "argon2-cffi>=23,<26",
     # Claude on Amazon Bedrock (BUILD_PLAN §3 AI row); the [bedrock] extra brings boto3.
     "anthropic[bedrock]>=1.9,<2",
+    # Google Gemini API: the working AI provider until Bedrock access is granted (docs/adr/0005).
+    "google-genai>=1.30,<2",
 ]
 
 [project.optional-dependencies]

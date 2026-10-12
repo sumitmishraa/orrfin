@@ -4,7 +4,7 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 
 ## Current state
 - Step 0 (manual setup): Docker done; Bedrock access **pending**: founder opened an AWS support case (use-case form blocked); advised to file it as "Account and billing".
-- Steps 1, 3, 4, 5: done (29 Sep). Step 2: code done, live run blocked on Bedrock access. Steps 6-10 done (4 Oct). Step 11 (ERP research) done (5 Oct). Next: Step 12 (multi-ERP plug); live ERPNext is now Step 13 (start the 14-day trial then). Bedrock still locked: local runs use AI_PROVIDER=fake. Steps renumbered in v2.2 (22 steps).
+- Steps 1, 3, 4, 5: done (29 Sep). Step 2: code done, live run blocked on Bedrock access. Steps 6-10 done (4 Oct). Step 11 (ERP research) done (5 Oct). Next: Step 12 (multi-ERP plug); live ERPNext is now Step 13 (start the 14-day trial then). Bedrock still locked, so Gemini is now the working AI (12 Oct, ADR 0005); `.env` stays AI_PROVIDER=fake until the founder pastes GEMINI_API_KEY. Steps renumbered in v2.2 (22 steps).
 
 ## Decisions so far
 - Plan: docs/BUILD_PLAN.md v2.1 (intake-to-procure + draft PO added 29 Sep). Prompts: docs/PROMPTS.md (15 steps).
@@ -63,3 +63,9 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 - Live: ERPNext, Tally (Educational mode, XML :9000), Business Central (30-day trial, needs a work email), Zoho Books (free), Odoo (Docker). Sandbox: SAP S/4HANA read (api.sap.com key). Simulated: SAP write (purchase requisition as draft PO), SAP B1, Oracle Fusion, NetSuite, Dynamics F&O, BUSY.
 - BUILD_PLAN v2.2 (§0 changes 17–21, §2, §3, §4, §5 `erp_connections` + `erp_connection_id`, §8 per-ERP table, §11 M5b/M6b, §12, §13, §14 Q8); ADR 0004; PROMPTS renumbered to 22 steps (12 plug, 13–15 ERPNext live + outbox, 16–20 connectors, 21 deploy, 22 final).
 - Open: founder needs a work email (e.g. @orrfin.ai) before Step 17. Docs only; no code changed.
+
+**Gemini as the working AI (12 Oct).** Founder: use a Gemini API key now, Bedrock later. `adapters/gemini_ai.py` (GeminiExtractor + GeminiExplainer, `google-genai` 1.75, model `gemini-3.8-flash`); prompts moved to `adapters/ai_prompts.py` (shared with Claude); `providers.get_explainer()` replaces the Claude-only call in `match_job.py`. `AI_PROVIDER=gemini` is the default in config + `.env.example`; tests still force `fake`.
+- Same rules as ADR 0003: one SDK attempt, errors/cut-off/safety/off-schema → ExtractorUnavailable → retry → manual entry; Pydantic validates output (money stays strings). ADR 0005; BUILD_PLAN change 22, §3 rows, §13 wording; Trust page; README; ARCHITECTURE.
+- Verified: 178 backend tests pass (9 new stub-client Gemini tests; no network). Live Gemini call NOT yet run: needs the key.
+- Founder: paste key into `.env` `GEMINI_API_KEY=`, set `AI_PROVIDER=gemini`, then run `run_extraction_eval.py --provider gemini --out evals/extraction/report-gemini.md`.
+- Note: pip inside the Claude sandbox hangs on pypi.org; installs must run outside it. Free-tier Gemini may use prompts for training: synthetic data only.

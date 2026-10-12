@@ -1,7 +1,7 @@
 # Orrfin P2P + Invoice-Matching Prototype: Build Plan v2
 
 **Status:** approved plan; Step 1 (walking skeleton) built. See `docs/PROGRESS.md`.
-**Version:** v2.2 (5 Oct 2026). v2 (26 Sep) replaced v1 after an engineering review scored v1 at 50/100. v2.1 adds the intake-to-procure workflow and full P2P (Orrfin drafts the PO), approved by the founder on 29 Sep. v2.2 adds multi-ERP connectors (Tally, Microsoft Dynamics, SAP, Oracle, Zoho, Odoo beside ERPNext), approved by the founder on 5 Oct; see "v2.2 changes" below and `docs/ERP_CONNECTORS.md`.
+**Version:** v2.2 (5 Oct 2026). v2 (26 Sep) replaced v1 after an engineering review scored v1 at 50/100. v2.1 adds the intake-to-procure workflow and full P2P (Orrfin drafts the PO), approved by the founder on 29 Sep. v2.2 adds multi-ERP connectors (Tally, Microsoft Dynamics, SAP, Oracle, Zoho, Odoo beside ERPNext), approved by the founder on 5 Oct; see "v2.2 changes" below and `docs/ERP_CONNECTORS.md`. 11 Oct: Gemini is the working AI until Bedrock access is granted (change 22, ADR 0005).
 **Target:** a working investor demo on synthetic data. The pitch date moved later (v2.1) and is not yet fixed; build in `docs/PROMPTS.md` step order.
 **Not a target:** production use or real customer data. See section 12 for the gates that must be passed before a pilot.
 
@@ -44,6 +44,7 @@ Still out of scope: vendor quotes/comparison, new-vendor onboarding requests, pa
 | 19 | §2 and §8 say "the connected ERP" instead of "ERPNext". The §8 safety rules are unchanged; the draft meaning and the lookup key are defined **per ERP** (§8 table). | Write-back is built once, for every ERP |
 | 20 | §5 (additive): new table `erp_connections`; mirrored tables get `erp_connection_id`. | Know which ERP each mirrored row came from; switch ERPs in the demo |
 | 21 | Steps renumbered: Step 11 = ERP research, Step 12 = multi-ERP plug, 13–15 = live ERPNext + write-back, 16–20 = connector families, 21 = deploy, 22 = final review. SAP and Tally leave the stretch goals. | Design the plug before write-back code is written against one ERP |
+| 22 | *(11 Oct)* **Gemini is the working AI provider** (`AI_PROVIDER=gemini`, Google Gemini API key) until Bedrock access is granted; Bedrock stays the target and needs only a setting change. Same prompts, schema, retries and fallbacks (ADR 0005). | Bedrock access is still blocked; real extraction accuracy must be measured now, not after the pitch |
 
 ---
 
@@ -109,7 +110,7 @@ It has two connected workflows:
 | Database | Amazon RDS PostgreSQL 16, Mumbai (ap-south-1) | Automated backups ON, 7 days |
 | Files | Amazon S3, private, SSE-S3, versioned | |
 | Background work | Postgres `jobs` table + worker process (`SELECT … FOR UPDATE SKIP LOCKED`, which lets a worker take a job without another worker grabbing it too) | Can move to SQS later without changing business logic |
-| AI | Claude via **Amazon Bedrock** (or the Anthropic API directly), behind one `Extractor` interface | Confirm the exact model ID callable from ap-south-1 on Day 1. Inference may run outside India; disclose it. |
+| AI | Claude via **Amazon Bedrock** (or the Anthropic API directly), behind one `Extractor` interface. *(11 Oct)* Until Bedrock access is granted: **Google Gemini API** (`gemini-3.8-flash`) behind the same interface | Confirm the exact model ID callable from ap-south-1 on Day 1. Inference may run outside India; disclose it. Gemini's free tier may use prompts to improve Google's products: synthetic data only. |
 | Auth | Email + password (argon2 hash) with a server-side session cookie; roles stored in the database | SSO/Cognito later |
 | Hosting | One EC2 server, Docker Compose (api, worker, web, Caddy for HTTPS) | Fargate at pilot stage |
 | CI | GitHub (private repo) + GitHub Actions: pytest against a Postgres service container | Required from Day 1 |
@@ -121,7 +122,7 @@ It has two connected workflows:
 |---|---|---|
 | Postgres | Docker Desktop, `postgres:16` | RDS |
 | Files | Local disk, behind the `FileStore` port | S3 |
-| AI | Bedrock, called with the laptop IAM user `orrfin-dev-laptop` (Bedrock-only) | Bedrock, called with the EC2 instance role |
+| AI | Gemini API key in `.env` (until Bedrock access); then Bedrock, called with the laptop IAM user `orrfin-dev-laptop` (Bedrock-only) | Gemini key from Secrets Manager, or Bedrock with the EC2 instance role once access is granted |
 | ERP | Fake ERPNext fixtures first; live ERPNext from Step 13; other connectors in Steps 16–20 (Tally and Odoo run on the laptop) | Live ERPNext, Business Central, Zoho Books, SAP sandbox; simulated connectors run from fixtures. Tally needs the laptop (or the future local agent), so demo it from the laptop. |
 
 Steps and prompts are in `docs/PROMPTS.md`.
@@ -463,7 +464,7 @@ Roughly $20–40 for the week. After the pitch, snapshot RDS, then stop or delet
 
 **Say:**
 - "Controlled prototype on synthetic data; draft-only; not production."
-- "Document AI runs on AWS Bedrock; inference may be processed outside India, and before pilots we will choose a routing that meets each customer's requirement."
+- "Document AI runs on Google Gemini in this prototype (AWS Bedrock is the target); inference may be processed outside India, and before pilots we will choose a routing that meets each customer's requirement."
 - *(v2.2)* "Live today on ERPNext, Tally, Business Central, Zoho Books and Odoo; reading SAP's official sandbox; Oracle, NetSuite, Dynamics F&O and SAP Business One are built to their published APIs and go live on a customer's test system."
 
 **Never say:**

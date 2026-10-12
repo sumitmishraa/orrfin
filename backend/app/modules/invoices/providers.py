@@ -1,4 +1,4 @@
-"""Which Extractor and FileStore the invoices module uses (BUILD_PLAN §4 ports; §3 AI row).
+"""Which Extractor, Explainer and FileStore the invoices module uses (BUILD_PLAN §4 ports; §3 AI row).
 
 Chosen from settings (AI_PROVIDER, FILE_STORE_DIR). Tests swap the extractor with
 `use_extractor(...)`, e.g. to simulate an AI outage, without touching settings.
@@ -7,8 +7,11 @@ Chosen from settings (AI_PROVIDER, FILE_STORE_DIR). Tests swap the extractor wit
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from app.adapters.claude_ai import ClaudeExtractor, build_client
+from typing import Any
+
+from app.adapters.claude_ai import ClaudeExplainer, ClaudeExtractor, build_client
 from app.adapters.fake_extractor import FakeExtractor
+from app.adapters.gemini_ai import GeminiExplainer, GeminiExtractor, build_gemini_client
 from app.adapters.local_filestore import LocalFileStore
 from app.config import REPO_ROOT, get_settings
 from app.ports.extractor import Extractor
@@ -24,7 +27,19 @@ def get_extractor() -> Extractor:
     settings = get_settings()
     if settings.ai_provider == "fake":
         return FakeExtractor(ANSWER_KEY_DIRS)
+    if settings.ai_provider == "gemini":
+        return GeminiExtractor(*build_gemini_client(settings))
     return ClaudeExtractor(*build_client(settings))
+
+
+def get_explainer() -> Any | None:
+    """The AI that writes match explanations, or None for "fake" (the template is used instead)."""
+    settings = get_settings()
+    if settings.ai_provider == "fake":
+        return None
+    if settings.ai_provider == "gemini":
+        return GeminiExplainer(*build_gemini_client(settings))
+    return ClaudeExplainer(*build_client(settings))
 
 
 def get_file_store() -> FileStore:

@@ -45,10 +45,11 @@ class Settings(BaseSettings):
     erp_fixtures_dir: str = "seed/erpnext"
 
     # --- AI (BUILD_PLAN §3 AI row, §7). One provider serves extraction and explanations.
+    # "gemini" (Google Gemini API: the working provider until Bedrock access is granted, ADR 0005),
     # "bedrock" (the plan), "anthropic" (the plan's direct-API alternative) or "fake", which
     # returns the Step 6 answer keys for the evaluation PDFs: a clearly labelled stand-in
-    # used in tests and until Bedrock access is granted. It never pretends to be a model.
-    ai_provider: str = "bedrock"
+    # used in tests. It never pretends to be a model.
+    ai_provider: str = "gemini"
     # From docs/spikes.md: from Mumbai, current models exist only as global inference profiles.
     bedrock_model_id: str = "global.anthropic.claude-sonnet-5-5"
     aws_region: str = "ap-south-1"
@@ -58,6 +59,10 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-sonnet-5-5"
     # Only for ai_provider = "anthropic"; lives in .env (never committed).
     anthropic_api_key: SecretStr | None = None
+    # Only for ai_provider = "gemini"; key from aistudio.google.com, lives in .env (never committed).
+    # A stable model ID (not a "-latest" alias), so eval results stay tied to one model.
+    gemini_model: str = "gemini-3.8-flash"
+    gemini_api_key: SecretStr | None = None
 
     # --- Uploaded files (BUILD_PLAN §9 upload limits). Local disk now; S3 at deploy (Step 14).
     file_store_dir: str = "storage"  # relative to the repo root; git-ignored

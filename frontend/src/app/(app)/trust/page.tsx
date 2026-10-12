@@ -14,7 +14,7 @@ const ITEMS = [
   },
   {
     icon: Bot, title: "Where the AI runs",
-    body: "Document AI runs on AWS Bedrock; inference may be processed outside India, and before pilots we will choose a routing that meets each customer's requirement. The AI only reads invoices and explains results. It never decides a match: fixed, versioned rules do.",
+    body: "Document AI runs on Google Gemini in this prototype (AWS Bedrock is the target); inference may be processed outside India, and before pilots we will choose a routing that meets each customer's requirement. The AI only reads invoices and explains results. It never decides a match: fixed, versioned rules do.",
   },
   {
     icon: Database, title: "Read-only from the ERP",

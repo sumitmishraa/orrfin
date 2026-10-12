@@ -6,7 +6,7 @@ Orrfin is building a 7-day investor prototype: a P2P invoice-matching "Control G
 
 Build step by step with [docs/PROMPTS.md](docs/PROMPTS.md). At the start of every step, read [docs/PROGRESS.md](docs/PROGRESS.md) (the handoff log); at the end, append 8 lines or fewer to it. UI colours come from [docs/BRAND.md](docs/BRAND.md).
 
-Status: Steps 1, 3-10 done (to 4 Oct): skeleton; login and roles; fake-ERPNext sync; intake-to-procure; evaluation invoices; upload + extraction; matching engine; invoice review with SoD and audit; Control Graph + Trust page. Step 2 and real-AI accuracy wait on Bedrock access (local runs use AI_PROVIDER=fake). Plan v2.2 (5 Oct): multi-ERP connectors; Step 11 (ERP research, [docs/ERP_CONNECTORS.md](docs/ERP_CONNECTORS.md)) done. Next: Step 12 (multi-ERP plug). Update this line as milestones complete.
+Status: Steps 1, 3-10 done (to 4 Oct): skeleton; login and roles; fake-ERPNext sync; intake-to-procure; evaluation invoices; upload + extraction; matching engine; invoice review with SoD and audit; Control Graph + Trust page. AI now runs on Google Gemini (`AI_PROVIDER=gemini`, ADR 0005) until Bedrock access is granted; real-AI accuracy waits on the founder's GEMINI_API_KEY in `.env`. Plan v2.2 (5 Oct): multi-ERP connectors; Step 11 (ERP research, [docs/ERP_CONNECTORS.md](docs/ERP_CONNECTORS.md)) done. Next: Step 12 (multi-ERP plug). Update this line as milestones complete.
 
 ## Non-negotiables
 

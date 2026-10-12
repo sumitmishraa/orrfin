@@ -13,7 +13,6 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.adapters.claude_ai import ClaudeExplainer, build_client
 from app.config import get_settings
 from app.jobs import handler
 from app.models import (
@@ -29,6 +28,7 @@ from app.models import (
     Vendor,
 )
 from app.modules.audit.service import record_event, to_jsonable
+from app.modules.invoices.providers import get_explainer
 from app.modules.invoices.service import invoice_lines
 from app.modules.matching.config import RULE_SET_VERSION, Tolerances
 from app.modules.matching.engine import is_stale, match
@@ -109,11 +109,10 @@ def build_input(db: Session, invoice: Invoice) -> tuple[MatchInput, PurchaseOrde
 
 
 def explain(rule_results: list[dict[str, Any]], outcome: str, amount_at_risk: Decimal) -> tuple[str, str]:
-    """Claude explains from rule results only; any AI failure falls back to the template (never blocks)."""
-    settings = get_settings()
-    if settings.ai_provider != "fake":
+    """The AI explains from rule results only; any AI failure falls back to the template (never blocks)."""
+    if get_settings().ai_provider != "fake":
         try:
-            explainer = ClaudeExplainer(*build_client(settings))
+            explainer = get_explainer()
             return explainer.explain(rule_results, outcome), explainer.source
         except Exception:  # AI unavailable: the reviewer still gets a plain-English reason
             return explain_from_rules(rule_results, outcome, amount_at_risk), f"{TEMPLATE_SOURCE}; AI unavailable"
