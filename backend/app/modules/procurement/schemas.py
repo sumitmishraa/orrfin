@@ -5,6 +5,7 @@ Inputs are bounded to the column sizes: quantities 3 decimals, rates and amounts
 """
 
 import uuid
+from typing import Any
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -155,3 +156,5 @@ class RequestDetail(RequestSummary):
     current_steps: list[StepOut]
     timeline: list[TimelineEvent]
     allowed: AllowedActions
+    po_sync: dict[str, Any] | None = None  # Step 15: the draft PO's outbox status in the ERP
+    po_sync_note: str | None = None  # Step 15: why an approved request was not sent to the ERP

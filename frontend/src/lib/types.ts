@@ -120,6 +120,8 @@ export interface RequestDetail extends RequestSummary {
   current_steps: ApprovalStep[];
   timeline: TimelineEvent[];
   allowed: AllowedActions;
+  po_sync: ErpSync | null; // Step 15: the draft PO in the ERP
+  po_sync_note: string | null; // why an approved request was not sent to the ERP
 }
 
 export interface SyncCounts {

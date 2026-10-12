@@ -21,6 +21,7 @@ import {
   UserPlus,
 } from "lucide-react";
 
+import { ErpSyncPanel } from "@/components/erp-sync-panel";
 import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
 import { RequestForm } from "@/components/request-form";
 import { StatusBadge } from "@/components/status-badge";
@@ -334,7 +335,7 @@ function AuditTrail({ request }: { request: RequestDetail }) {
 
 export default function RequestPage() {
   const { id } = useParams<{ id: string }>();
-  const { data: request, setData, error, loading } = useApi<RequestDetail>(`/requests/${id}`);
+  const { data: request, setData, error, loading, reload } = useApi<RequestDetail>(`/requests/${id}`);
   const [editing, setEditing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -370,9 +371,10 @@ export default function RequestPage() {
         {request.ready_for_po ? (
           <p className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm font-medium text-success">
             <PackageCheck className="size-4" aria-hidden />
-            Approved and ready for PO. Orrfin drafts the purchase order in ERPNext in a later step.
+            Approved and ready for PO. Orrfin drafts the purchase order in the active ERP; a person submits it there.
           </p>
         ) : null}
+        <ErpSyncPanel sync={request.po_sync} note={request.po_sync_note} what="PO" onChange={() => void reload()} />
         {request.status === "returned" ? (
           <p className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
             Returned: {request.current_steps.find((s) => s.decision === "return")?.reason ?? "see the audit trail"}

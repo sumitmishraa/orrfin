@@ -33,6 +33,8 @@ class WriteCase:
     count: Callable[[ErpAdapter], dict[str, int]]  # {"bills": n, "pos": n} as the ERP itself holds them
     is_bill_write: Callable[[httpx.Request], bool]
     is_po_write: Callable[[httpx.Request], bool]
+    # What a person does in the ERP to turn Orrfin's draft PO into a real one (Step 15 "submit it").
+    submit_po: Callable[[ErpAdapter, str], None] | None = None
 
 
 def _erpnext_build(wrap: Wrap) -> ErpAdapter:
@@ -55,7 +57,8 @@ def _is_post(path: str) -> Callable[[httpx.Request], bool]:
 
 CASES: dict[str, WriteCase] = {
     "erpnext": WriteCase("erpnext", _erpnext_build, _erpnext_count,
-                         _is_post("/api/resource/Purchase Invoice"), _is_post("/api/resource/Purchase Order")),
+                         _is_post("/api/resource/Purchase Invoice"), _is_post("/api/resource/Purchase Order"),
+                         submit_po=lambda adapter, name: adapter._submit("Purchase Order", name)),
 }
 
 

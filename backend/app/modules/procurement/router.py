@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentUser, DbSession
 from app.models import AuditEvent, Category, PurchaseRequest, RequestApproval, User, Vendor
+from app.modules.erp_outbox import service as outbox_service
+from app.modules.erp_outbox.po import po_unavailable_reason
 from app.modules.procurement import service
 from app.modules.procurement.schemas import (
     AllowedActions,
@@ -139,7 +141,7 @@ def _detail(db: Session, user: User, request: PurchaseRequest) -> RequestDetail:
         vendor_name=vendors.get(request.vendor_id), suggested_vendor_id=request.suggested_vendor_id,
         suggested_vendor_name=vendors.get(request.suggested_vendor_id),
         completed_by_id=request.completed_by_id, approval_round=request.approval_round,
-        # The PO itself is drafted into ERPNext in Step 13 (§8); until then "approved" means ready.
+        # "approved" = ready for the PO draft; the outbox moves it to po_drafted, the next sync to po_open.
         ready_for_po=request.status == "approved",
         lines=[LineOut.model_validate(line) for line in service.request_lines(db, request)],
         current_steps=[StepOut(step=s.step, required_role=s.required_role, approver_id=s.approver_id,
@@ -148,6 +150,8 @@ def _detail(db: Session, user: User, request: PurchaseRequest) -> RequestDetail:
         timeline=[TimelineEvent(seq=e.seq, action=e.action, actor_name=names.get(e.actor_id),
                                 at=e.created_at, payload=e.payload) for e in events],
         allowed=_allowed(db, user, request, steps),
+        po_sync=outbox_service.status_for(db, row := outbox_service.outbox_for(db, request_id=request.id)),
+        po_sync_note=po_unavailable_reason(db, request) if row is None and request.status == "approved" else None,
     )
 
 

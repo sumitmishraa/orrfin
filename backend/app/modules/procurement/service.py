@@ -29,6 +29,7 @@ from app.models import (
     Vendor,
 )
 from app.modules.audit.service import record_event
+from app.modules.erp_outbox.po import queue_po
 
 CENT = Decimal("0.01")
 EDITABLE_BY_REQUESTER = ("draft", "returned")
@@ -339,6 +340,8 @@ def decide(db: Session, user: User, request_id: uuid.UUID, step_number: int, dec
     elif all(s.decision == "approve" for s in steps):
         request.status = "approved"
         _audit(db, request, user, "approved", payload)
+        # §8 "Trigger": outbox row + job + audit event in the same transaction as the final approval.
+        queue_po(db, request, user.id)
     else:
         _audit(db, request, user, "step_approved", payload)
     return request

@@ -18,6 +18,7 @@ from app.jobs import handler
 from app.models import ErpOutbox, GoodsReceipt, GrnLine, Job, PoLine, PurchaseOrder, Vendor
 from app.modules.audit.service import record_event
 from app.modules.connectors.service import active_connection, get_connection
+from app.modules.erp_outbox.po import on_po_seen_in_erp
 from app.ports.erp import ErpAdapter
 
 
@@ -79,6 +80,9 @@ def pull_from_erp(db: Session, org_id: uuid.UUID, adapter: ErpAdapter,
             "grand_total": record.grand_total, "origin": "orrfin" if record.orrfin_ref else "erp",
             "request_id": request_id, "po_number": record.po_number,
         }
+        if request_id is not None:
+            # A person submitted the draft Orrfin made: the request's PO is now open (§8 PO lifecycle).
+            on_po_seen_in_erp(db, request_id, record.erp_ref)
         if row is None:
             row = PurchaseOrder(**scope, erp_ref=record.erp_ref, **values)
             db.add(row)
