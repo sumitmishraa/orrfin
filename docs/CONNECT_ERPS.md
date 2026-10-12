@@ -62,3 +62,44 @@ A person submits them in ERPNext; Orrfin never does.
 - "refused the credentials (401/403)": regenerate the keys (step 3) and paste both again.
 - "has no company yet": finish ERPNext's setup wizard first.
 - "is not an allowed address": the site address must start with `https://`.
+
+---
+
+## TallyPrime (Live, free Educational mode, on this computer)
+
+**Create the company**
+1. Go to **tallysolutions.com** → **Download TallyPrime** → install it on the same computer as Orrfin.
+2. Open TallyPrime → **Work in Educational Mode** (free).
+3. **Create Company**: name **Orrfin Demo Pvt Ltd**, country India, GST on. Keep the company open.
+4. Press **F11 (Features)** → **Inventory** → set **Enable Purchase Order Processing** and
+   **Use Tracking Numbers (Delivery/Receipt Notes)** to **Yes** → save. (Orrfin's demo POs and receipt notes need them.)
+
+**Let Orrfin talk to Tally**
+5. Press **F1 (Help) → Settings → Connectivity** (or **Exchange → Data Synchronisation → Client/Server Configuration**)
+   → **TallyPrime acts as** = **Both**, **Port** = **9000** → save. Leave TallyPrime open while you use Orrfin.
+
+**Connect**
+6. Orrfin → Connectors → **TallyPrime** card → fill in:
+   - **Tally address**: leave blank (it means `http://localhost:9000`)
+   - **Company name in TallyPrime**: `Orrfin Demo Pvt Ltd` (exactly as in Tally)
+   - **Educational mode?**: `yes`
+7. **Save keys** → **Test connection** (✓ "Reach TallyPrime", ✓ "Company loaded").
+8. **Prepare demo data**: creates units, stock items, the Purchase and Input CGST/SGST/IGST ledgers, the 5 vendors,
+   8 Purchase Orders and 8 Receipt Notes. In Educational mode they are dated the 1st (orders) and 2nd (receipts).
+9. **Make active** → POs → **Sync from ERP**.
+
+**Where drafts appear:** Tally → **Display More Reports → Exception Reports → Optional Vouchers**. Orrfin's draft bills
+are Optional *Purchase* vouchers (no effect on the books) and draft POs are Optional *Purchase Order* vouchers.
+Regularise one in Tally to make it real.
+
+**If something fails**
+- "Could not reach TallyPrime": Tally is closed, or step 5 isn't saved, or another program uses port 9000.
+- "Company … is not open": open the company in Tally (Alt+F3 / Select Company).
+- "Tally refused it: …": the line quotes Tally's own message (for example a missing ledger). Run Prepare demo data again.
+
+## BUSY (Simulated, file-based)
+
+Nothing to sign up. BUSY has no API, so Orrfin's "draft" is an **XML import file**: on an approved invoice or request,
+the ERP draft panel shows **Download the import file**; load it with BUSY's voucher import. Make it active from its card
+(**Use simulated**) to try it.
+

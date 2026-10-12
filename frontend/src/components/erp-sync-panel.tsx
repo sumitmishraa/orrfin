@@ -6,12 +6,12 @@
  * duplicate: the server looks the document up first, and on a confirmed draft it only checks and reports.
  */
 import { useEffect, useState } from "react";
-import { CircleCheck, CircleX, Clock, RefreshCw } from "lucide-react";
+import { CircleCheck, CircleX, Clock, Download, RefreshCw } from "lucide-react";
 
 import { ErpBadge } from "@/components/erp-badge";
 import { ErrorNotice, Panel } from "@/components/page";
 import { Button } from "@/components/ui/button";
-import { post } from "@/lib/api";
+import { API_URL, post } from "@/lib/api";
 import type { ErpSync } from "@/lib/types";
 
 const STATES: Record<ErpSync["state"], { text: string; icon: typeof Clock; tone: string }> = {
@@ -73,6 +73,12 @@ export function ErpSyncPanel({ sync, note, what, onChange }: {
         <p className="mt-1 text-xs text-muted-foreground">
           It is a draft: a person reviews and submits it inside {current.erp}. Orrfin never posts it.
         </p>
+      ) : null}
+      {current.import_file_url ? (
+        <a href={`${API_URL}${current.import_file_url}`} download
+           className="mt-2 inline-flex items-center gap-1 text-sm text-primary hover:underline">
+          <Download className="size-4" aria-hidden /> Download the import file, then load it in {current.erp}
+        </a>
       ) : null}
       {current.last_error ? <div className="mt-2"><ErrorNotice message={current.last_error} /></div> : null}
       <div className="mt-3 flex items-center gap-2">

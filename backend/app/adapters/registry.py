@@ -47,6 +47,7 @@ class ConnectorSpec:
     simulated: Callable[["ErpConnection", Path], ErpAdapter] | None = None
     live: Callable[["ErpConnection", dict[str, str]], ErpAdapter] | None = None
     note: str = ""
+    file_based: bool = False  # drafts are import files a person loads (BUSY), downloadable from Orrfin
 
     @property
     def has_live_mode(self) -> bool:
@@ -86,6 +87,43 @@ def _erpnext_live(connection: "ErpConnection", values: dict[str, str]) -> ErpAda
     return ErpnextAdapter(http, label="live", company=values.get("company"))
 
 
+# --- TallyPrime + BUSY (Step 16) ---------------------------------------------------------------------
+
+TALLY_SIM_URL = "http://localhost:9000"
+
+
+def _yes(value: str | None, default: bool = True) -> bool:
+    return default if not (value or "").strip() else value.strip().lower() in ("yes", "y", "true", "1")
+
+
+def _tally_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
+    import httpx
+
+    from app.adapters.sim_store import SimStore
+    from app.adapters.tally import TallyAdapter
+    from app.adapters.tally_sim import DEMO_COMPANY, FakeTallyServer
+
+    http = ErpHttp(base_url=TALLY_SIM_URL, transport=httpx.MockTransport(FakeTallyServer(SimStore(state))),
+                   erp_name="TallyPrime (simulated)")
+    return TallyAdapter(http, company=DEMO_COMPANY, label="simulated", educational=False)
+
+
+def _tally_live(connection: "ErpConnection", values: dict[str, str]) -> ErpAdapter:
+    from app.adapters.tally import TallyAdapter
+
+    base = check_base_url(values.get("url") or TALLY_SIM_URL, CATALOGUE["tallyprime"].host_policy)
+    http = ErpHttp(base_url=base, erp_name="TallyPrime")
+    return TallyAdapter(http, company=values["company"].strip(), label="live",
+                        educational=_yes(values.get("educational_mode")))
+
+
+def _busy_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
+    from app.adapters.busy import BusyAdapter
+    from app.adapters.sim_store import SimStore
+
+    return BusyAdapter(SimStore(state), state.parent / f"{connection.id}-files")
+
+
 CATALOGUE: dict[str, ConnectorSpec] = {
     "erpnext": ConnectorSpec(
         system="erpnext", name="ERPNext", segment="Indian SMB and mid-market", live_label="live", step=13, built=True,
@@ -103,10 +141,22 @@ CATALOGUE: dict[str, ConnectorSpec] = {
         simulated=_erpnext_simulated, live=_erpnext_live,
     ),
     "tallyprime": ConnectorSpec(
-        system="tallyprime", name="TallyPrime", segment="Most Indian SMBs", live_label="live", step=16, built=False,
-        signup="https://tallysolutions.com/download (free Educational mode)"),
+        system="tallyprime", name="TallyPrime", segment="Most Indian SMBs", live_label="live", step=16, built=True,
+        signup="https://tallysolutions.com/download (free Educational mode)",
+        fields=(
+            CredentialField("url", "Tally address", required=False, placeholder=TALLY_SIM_URL,
+                            help="Leave blank for http://localhost:9000 (TallyPrime on this computer)"),
+            CredentialField("company", "Company name in TallyPrime", placeholder="Orrfin Demo Pvt Ltd",
+                            help="Exactly as shown in TallyPrime; the company must be open"),
+            CredentialField("educational_mode", "Educational mode?", required=False, placeholder="yes",
+                            help="yes (free mode: vouchers only on some dates) or no (licensed)"),
+        ),
+        host_policy=HostPolicy(allow_local_http=True),
+        simulated=_tally_simulated, live=_tally_live,
+        note="Tally runs on this computer; Orrfin talks to it on port 9000."),
     "busy": ConnectorSpec(
-        system="busy", name="BUSY", segment="Indian SMB, traders", live_label="simulated", step=16, built=False,
+        system="busy", name="BUSY", segment="Indian SMB, traders", live_label="simulated", step=16, built=True,
+        simulated=_busy_simulated, file_based=True,
         signup="No public API: drafts become an XML import file",
         note="File-based: Orrfin writes an import file that a person loads into BUSY."),
     "business_central": ConnectorSpec(

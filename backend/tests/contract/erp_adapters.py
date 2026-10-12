@@ -6,16 +6,22 @@ demo data"), then the same contract checks run on what it created. Later steps a
 here; nothing else in the suite changes.
 """
 
+import tempfile
 from collections.abc import Callable
+from pathlib import Path
 
 import httpx
 
 from app.adapters.erpnext_client import ErpnextAdapter
 from app.adapters.erpnext_fake import FakeErpnextAdapter, simulated_http
+from app.adapters.busy import BusyAdapter
 from app.adapters.erpnext_sim import FakeFrappeServer
 from app.adapters.sim_store import SimStore
+from app.adapters.tally import TallyAdapter
+from app.adapters.tally_sim import DEMO_COMPANY, FakeTallyServer
 from app.config import REPO_ROOT
 from app.ports.erp import ErpAdapter
+from app.security.outbound import ErpHttp
 
 ERPNEXT_FIXTURES = REPO_ROOT / "seed" / "erpnext"
 
@@ -33,9 +39,31 @@ def erpnext_seeded() -> ErpAdapter:
     return adapter
 
 
+def _tally(server: FakeTallyServer, label: str, educational: bool = False) -> TallyAdapter:
+    http = ErpHttp(base_url="http://localhost:9000", transport=httpx.MockTransport(server), erp_name="TallyPrime")
+    return TallyAdapter(http, company=DEMO_COMPANY, label=label, educational=educational)
+
+
+def tally_simulated() -> ErpAdapter:
+    return _tally(FakeTallyServer(SimStore(None)), "simulated")
+
+
+def tally_seeded() -> ErpAdapter:
+    adapter = _tally(FakeTallyServer(SimStore(None), empty=True), "live", educational=True)
+    adapter.seed_demo_data()
+    return adapter
+
+
+def busy_simulated() -> ErpAdapter:
+    return BusyAdapter(SimStore(None), Path(tempfile.mkdtemp(prefix="orrfin-busy-")))
+
+
 ADAPTERS: dict[str, Callable[[], ErpAdapter]] = {
     "erpnext-simulated": erpnext_simulated,
     "erpnext-seeded": erpnext_seeded,
+    "tally-simulated": tally_simulated,
+    "tally-seeded": tally_seeded,
+    "busy-simulated": busy_simulated,
 }
 
 

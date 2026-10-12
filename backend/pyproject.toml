@@ -21,6 +21,9 @@ dependencies = [
     "anthropic[bedrock]>=1.9,<2",
     # Google Gemini API: the working AI provider until Bedrock access is granted (docs/adr/0005).
     "google-genai>=1.30,<2",
+    # ERP connectors (Steps 12-20): HTTP client, and XML parsing that blocks entity-expansion attacks (Tally).
+    "httpx>=0.27,<1",
+    "defusedxml>=0.7,<1",
 ]
 
 [project.optional-dependencies]

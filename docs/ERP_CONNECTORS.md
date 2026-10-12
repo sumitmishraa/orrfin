@@ -98,7 +98,13 @@ What changes per ERP is what "draft" means and which field the lookup uses.
   - Purchase Receipt has "Supplier Delivery Note" (verified); "Prepare demo data" stores the receipt number there.
   - A standard PO field for a supplier-facing PO number could not be confirmed, so Orrfin adds its own `orrfin_po_number` custom field.
   - ERPNext v15 may prefix custom fieldnames with `custom_`; the adapter accepts both spellings.
-- **TallyPrime.**
+- **TallyPrime** *(checked in Step 16, 12 Oct)*.
+  - HTTP server on port 9000, enabled with "TallyPrime acts as: Both" (F1 → Settings → Connectivity, or Exchange → Data Synchronisation) (verified; menu wording varies by release).
+  - Import envelope `ENVELOPE/HEADER/TALLYREQUEST = Import Data` → `IMPORTDATA/REQUESTDESC/REPORTNAME` + `REQUESTDATA/TALLYMESSAGE`; reply has CREATED / ERRORS / LASTVCHID (verified).
+  - Educational mode: transactions only on the 1st, 2nd or 31st (Tally.Server 9 / ERP 9 help; not confirmed for TallyPrime). Orrfin dates demo vouchers on the 1st/2nd.
+  - ISOPTIONAL and REFERENCE (Supplier Invoice No.) on purchase vouchers: still unverified in the docs; Test connection + Prepare demo data will surface a refusal.
+  - Tally has no modified timestamp (ALTERID is used) and no PO status field (derived from receipts; demo "Status: Closed" narration).
+- **TallyPrime (planning notes).**
   - Runs on the customer's Windows PC, not in the cloud. A production connector needs a small **local agent** that calls `http://localhost:9000` and talks to Orrfin over HTTPS (already a §12 gate).
   - In the demo, Orrfin calls the founder's laptop directly.
   - Educational mode only allows vouchers on some dates of each month (we believe the 1st, 2nd and 31st **(unverified)**), so the Tally fixtures must use those dates.
@@ -136,6 +142,7 @@ What changes per ERP is what "draft" means and which field the lookup uses.
 ---
 
 ## Sources
+- TallyPrime: [XML integration](https://help.tallysolutions.com/xml-integration/), [TallyPrime as server](https://help.tallysolutions.com/tallyprime-as-server/), [pre-requisites for integrations](https://help.tallysolutions.com/pre-requisites-for-integrations/), [Educational mode (Tally.Server 9)](https://help.tallysolutions.com/article/ts9rel54/ts9/education_mode.htm), [voucher creation via XML (case study)](https://help.tallysolutions.com/?p=108640)
 - ERPNext / Frappe: [token-based authentication](https://docs.frappe.io/framework/user/en/guides/integration/rest_api/token_based_authentication), [REST API](https://docs.frappe.io/framework/v15/user/en/api/rest), [Accounts Settings](https://docs.frappe.io/erpnext/accounts-settings.md), [Purchase Receipt](https://docs.frappe.io/erpnext/purchase-receipt.md), [submit via REST (forum)](https://discuss.frappe.io/t/how-to-call-rest-api-for-rename-cancel-and-submit/55828)
 - Tally XML integration: [help.tallysolutions.com/xml-integration](https://help.tallysolutions.com/xml-integration/), [XML message formats](https://help.tallysolutions.com/xml-message-formats), [Integration with TallyPrime](https://help.tallysolutions.com/?p=149532)
 - BUSY integration FAQ: [busy.in/faqs/third-party-services/integration](https://busy.in/faqs/third-party-services/integration), [voucher import/export](https://busy.in/faqs/data-conversion/voucher-import-export/8/)

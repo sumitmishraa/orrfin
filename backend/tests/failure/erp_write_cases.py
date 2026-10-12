@@ -17,6 +17,8 @@ from app.adapters.erpnext_client import ErpnextAdapter
 from app.adapters.erpnext_fake import SIMULATED_BASE_URL
 from app.adapters.erpnext_sim import FakeFrappeServer
 from app.adapters.sim_store import SimStore
+from app.adapters.tally import TallyAdapter
+from app.adapters.tally_sim import DEMO_COMPANY, FakeTallyServer
 from app.config import REPO_ROOT
 from app.jobs import drain
 from app.models import Job
@@ -55,7 +57,43 @@ def _is_post(path: str) -> Callable[[httpx.Request], bool]:
     return lambda r: r.method == "POST" and r.url.path.replace("%20", " ") == path
 
 
+def _tally_build(wrap: Wrap) -> ErpAdapter:
+    server = FakeTallyServer(SimStore(None))
+    adapter = TallyAdapter(ErpHttp(base_url="http://localhost:9000", transport=wrap(httpx.MockTransport(server)),
+                                   erp_name="TallyPrime (simulated)"), company=DEMO_COMPANY, label="simulated",
+                           educational=False)
+    adapter.server = server
+    return adapter
+
+
+def _tally_vouchers(adapter) -> list[dict]:
+    return list(adapter.server._objects(adapter.server.store.load())["VOUCHER"].values())
+
+
+def _tally_count(adapter) -> dict[str, int]:
+    optional = [v for v in _tally_vouchers(adapter) if v.get("ISOPTIONAL") == "Yes"]
+    return {"bills": sum(v["VOUCHERTYPENAME"] == "Purchase" for v in optional),
+            "pos": sum(v["VOUCHERTYPENAME"] == "Purchase Order" for v in _tally_vouchers(adapter)
+                       if "orrfin:" in (v.get("NARRATION") or ""))}
+
+
+def _tally_regularise(adapter, number: str) -> None:
+    """What a person does in Tally: turn the optional voucher into a regular one."""
+    state = adapter.server.store.load()
+    vouchers = state["objects"]["VOUCHER"]
+    for key, vch in vouchers.items():
+        if vch.get("VOUCHERNUMBER") == number:
+            vouchers[key] = {**vch, "ISOPTIONAL": "No", "ALTERID": str(int(vch["ALTERID"]) + 1)}
+    adapter.server.store.save(state)
+
+
+def _tally_import(vch_type: str) -> Callable[[httpx.Request], bool]:
+    return lambda r: b"Import Data" in r.content and f'VCHTYPE="{vch_type}"'.encode() in r.content
+
+
 CASES: dict[str, WriteCase] = {
+    "tally": WriteCase("tally", _tally_build, _tally_count, _tally_import("Purchase"),
+                       _tally_import("Purchase Order"), submit_po=_tally_regularise),
     "erpnext": WriteCase("erpnext", _erpnext_build, _erpnext_count,
                          _is_post("/api/resource/Purchase Invoice"), _is_post("/api/resource/Purchase Order"),
                          submit_po=lambda adapter, name: adapter._submit("Purchase Order", name)),

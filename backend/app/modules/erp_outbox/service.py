@@ -203,7 +203,10 @@ def status_for(db: Session, row: ErpOutbox | None) -> dict[str, Any] | None:
     connection = db.get(ErpConnection, row.erp_connection_id)
     return {"id": str(row.id), "state": row.state, "erp_doc_name": row.erp_doc_name, "attempts": row.attempts,
             "last_error": row.last_error, "erp": spec_for(connection.system).name, "label": label_for(connection),
-            "doc_type": row.doc_type}
+            "doc_type": row.doc_type,
+            # File-based ERPs (BUSY): the draft is an import file the page offers for download.
+            "import_file_url": f"/erp-outbox/{row.id}/import-file"
+            if spec_for(connection.system).file_based and row.state == "CONFIRMED" else None}
 
 
 def outbox_for(db: Session, *, invoice_id: uuid.UUID | None = None,

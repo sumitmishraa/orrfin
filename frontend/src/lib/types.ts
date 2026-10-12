@@ -383,4 +383,6 @@ export interface ErpSync {
   erp: string;
   label: ErpLabel;
   doc_type: "purchase_invoice" | "purchase_order";
+  /** File-based ERPs (BUSY): where to download the import file a person loads into the ERP. */
+  import_file_url: string | null;
 }
