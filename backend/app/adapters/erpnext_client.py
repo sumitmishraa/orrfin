@@ -8,8 +8,10 @@ inside app/adapters/; documents are translated by `erpnext.py`.
 - draft bill  = Purchase Invoice with docstatus 0; lookup = supplier + bill_no (ERPNext's "Check Supplier
   Invoice Number Uniqueness" is the second net); remarks carry `orrfin:<idempotency key>`.
 - draft PO    = Purchase Order with docstatus 0; lookup = the Unique custom field `orrfin_ref`.
-"Prepare demo data" creates that custom field and turns the uniqueness check on, so the founder doesn't
-have to click through Customize Form.
+"Prepare demo data" creates that custom field (and "Orrfin PO No", which holds the canonical PO number the
+demo invoices quote), turns the uniqueness check on and adds Input GST accounts, so the founder doesn't
+have to click through Customize Form. Documents are submitted with Frappe's documented
+`frappe.client.submit` method.
 """
 
 import json
@@ -43,7 +45,10 @@ from app.ports.erp import (
 )
 from app.security.outbound import ErpHttp
 
-PO_REF_FIELDS = ("orrfin_ref", "custom_orrfin_ref")
+CUSTOM_FIELDS = {  # fieldname → (label, unique); ERPNext v15's UI may prefix "custom_", so both spellings count
+    "orrfin_ref": ("Orrfin Ref", 1),
+    "orrfin_po_number": ("Orrfin PO No", 0),
+}
 ACCOUNTS_SETTINGS = "Accounts Settings"
 GST_HEADS = ("CGST", "SGST", "IGST")
 
@@ -71,7 +76,7 @@ class ErpnextAdapter:
         self.http.describe_error = frappe_error
         self.label = label
         self.company = company or None
-        self._po_ref_field: str | None = None
+        self._po_fields: dict[str, str] | None = None
 
     # --- plumbing ------------------------------------------------------------------------------
     def _json(self, response: httpx.Response) -> Any:
@@ -96,13 +101,18 @@ class ErpnextAdapter:
     def _update(self, doctype: str, name: str, values: dict[str, Any]) -> dict[str, Any]:
         return self._json(self.http.request("PUT", f"/api/resource/{doctype}/{name}", json=values))["data"]
 
-    def _po_field(self) -> str:
-        """Which spelling of the Orrfin Ref custom field this site has (v15 UI adds "custom_")."""
-        if self._po_ref_field is None:
+    def _po_field(self, fieldname: str = "orrfin_ref") -> str:
+        """The spelling this site uses for one of Orrfin's Purchase Order custom fields, or "" if missing."""
+        if self._po_fields is None:
             rows = self._list("Custom Field", [["dt", "=", "Purchase Order"]], ["name", "fieldname"])
             names = {r.get("fieldname") for r in rows}
-            self._po_ref_field = next((f for f in PO_REF_FIELDS if f in names), "")
-        return self._po_ref_field
+            self._po_fields = {f: next((s for s in (f, f"custom_{f}") if s in names), "") for f in CUSTOM_FIELDS}
+        return self._po_fields[fieldname]
+
+    def _submit(self, doctype: str, name: str) -> None:
+        """Submit a saved document through Frappe's documented whitelisted method."""
+        doc = self._get(doctype, name)
+        self.http.request("POST", "/api/method/frappe.client.submit", json={"doc": {**doc, "doctype": doctype}})
 
     # --- port ------------------------------------------------------------------------------------
     def capabilities(self) -> Capabilities:
@@ -203,13 +213,14 @@ class ErpnextAdapter:
             bucket[kind] = bucket.get(kind, 0) + 1
 
         # Safety nets first (§8 "Before the demo").
-        if not self._po_field():
-            self._insert("Custom Field", {"dt": "Purchase Order", "fieldname": "orrfin_ref", "label": "Orrfin Ref",
-                                          "fieldtype": "Data", "unique": 1, "read_only": 1, "no_copy": 1,
-                                          "insert_after": "supplier"})
-            self._po_ref_field = None
-            tally("custom fields", True)
-            notes.append("Added the Unique 'Orrfin Ref' field to Purchase Order.")
+        for fieldname, (label, unique) in CUSTOM_FIELDS.items():
+            if not self._po_field(fieldname):
+                self._insert("Custom Field", {"dt": "Purchase Order", "fieldname": fieldname, "label": label,
+                                              "fieldtype": "Data", "unique": unique, "read_only": 1, "no_copy": 1,
+                                              "insert_after": "supplier"})
+                self._po_fields = None
+                tally("custom fields", True)
+                notes.append(f"Added the '{label}' field to Purchase Order.")
         settings = self._get(ACCOUNTS_SETTINGS, ACCOUNTS_SETTINGS) or {}
         if not int(settings.get("check_supplier_invoice_uniqueness") or 0):
             self._update(ACCOUNTS_SETTINGS, ACCOUNTS_SETTINGS, {"check_supplier_invoice_uniqueness": 1})
@@ -243,7 +254,8 @@ class ErpnextAdapter:
             tally("suppliers", not found)
 
         for po in data.purchase_orders:
-            rows = self._list("Purchase Order", [["order_confirmation_no", "=", po.number], ["docstatus", "<", 2]])
+            number_field = self._po_field("orrfin_po_number")
+            rows = self._list("Purchase Order", [[number_field, "=", po.number], ["docstatus", "<", 2]])
             if rows:
                 tally("purchase orders", False)
                 po_name = rows[0]["name"]
@@ -251,7 +263,7 @@ class ErpnextAdapter:
                 # Same-state suppliers: CGST 9% + SGST 9%; others IGST 18% (BUILD_PLAN §6 tax rule).
                 heads = (("CGST", 9), ("SGST", 9)) if po.vendor.same_state else (("IGST", 18),)
                 doc = {"supplier": po.vendor.name, "transaction_date": po.po_date.isoformat(),
-                       "schedule_date": po.schedule_date.isoformat(), "order_confirmation_no": po.number,
+                       "schedule_date": po.schedule_date.isoformat(), number_field: po.number,
                        "items": [{"item_code": l.item_code, "qty": _num(l.qty), "rate": _num(l.rate),
                                   "schedule_date": po.schedule_date.isoformat()} for l in po.lines],
                        "taxes": [{"charge_type": "On Net Total", "account_head": tax_accounts[head], "rate": rate,
@@ -260,7 +272,7 @@ class ErpnextAdapter:
                 if self.company:
                     doc["company"] = self.company
                 po_name = self._insert("Purchase Order", doc)["name"]
-                self._update("Purchase Order", po_name, {"docstatus": 1})
+                self._submit("Purchase Order", po_name)
                 tally("purchase orders", True)
             po_doc = self._get("Purchase Order", po_name) or {}
             item_rows = {i["item_code"]: i["name"] for i in po_doc.get("items", [])}
@@ -279,7 +291,7 @@ class ErpnextAdapter:
                 if self.company:
                     pr["company"] = self.company
                 pr_name = self._insert("Purchase Receipt", pr)["name"]
-                self._update("Purchase Receipt", pr_name, {"docstatus": 1})
+                self._submit("Purchase Receipt", pr_name)
                 tally("goods receipts", True)
             if po.closed and po_doc.get("status") != "Closed":
                 self.http.request("POST", "/api/method/erpnext.buying.doctype.purchase_order.purchase_order."

@@ -91,6 +91,13 @@ What changes per ERP is what "draft" means and which field the lookup uses.
 
 ## 5. Connector notes (gotchas to plan for)
 
+- **ERPNext** *(checked in Step 13, 12 Oct; sources below)*.
+  - Auth header `Authorization: token <api_key>:<api_secret>`, keys from User → Settings → API Access → Generate Keys (verified).
+  - Submit with the documented whitelisted method `POST /api/method/frappe.client.submit` (a PUT of `docstatus: 1` is community advice only).
+  - Accounts Settings has "Check Supplier invoice number uniqueness" (verified; fieldname `check_supplier_invoice_uniqueness` not shown in the docs, so Test connection reads it and reports).
+  - Purchase Receipt has "Supplier Delivery Note" (verified); "Prepare demo data" stores the receipt number there.
+  - A standard PO field for a supplier-facing PO number could not be confirmed, so Orrfin adds its own `orrfin_po_number` custom field.
+  - ERPNext v15 may prefix custom fieldnames with `custom_`; the adapter accepts both spellings.
 - **TallyPrime.**
   - Runs on the customer's Windows PC, not in the cloud. A production connector needs a small **local agent** that calls `http://localhost:9000` and talks to Orrfin over HTTPS (already a §12 gate).
   - In the demo, Orrfin calls the founder's laptop directly.
@@ -129,6 +136,7 @@ What changes per ERP is what "draft" means and which field the lookup uses.
 ---
 
 ## Sources
+- ERPNext / Frappe: [token-based authentication](https://docs.frappe.io/framework/user/en/guides/integration/rest_api/token_based_authentication), [REST API](https://docs.frappe.io/framework/v15/user/en/api/rest), [Accounts Settings](https://docs.frappe.io/erpnext/accounts-settings.md), [Purchase Receipt](https://docs.frappe.io/erpnext/purchase-receipt.md), [submit via REST (forum)](https://discuss.frappe.io/t/how-to-call-rest-api-for-rename-cancel-and-submit/55828)
 - Tally XML integration: [help.tallysolutions.com/xml-integration](https://help.tallysolutions.com/xml-integration/), [XML message formats](https://help.tallysolutions.com/xml-message-formats), [Integration with TallyPrime](https://help.tallysolutions.com/?p=149532)
 - BUSY integration FAQ: [busy.in/faqs/third-party-services/integration](https://busy.in/faqs/third-party-services/integration), [voucher import/export](https://busy.in/faqs/data-conversion/voucher-import-export/8/)
 - Business Central API: [purchaseInvoices (v2.0)](https://learn.microsoft.com/fi-fi/dynamics365/business-central/dev-itpro/api-reference/v2.0/api/dynamics_purchaseinvoice_get), [purchaseOrders (v2.0)](https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/api/dynamics_purchaseorder_get), [trial sign-up and work email](https://learn.microsoft.com/en-us/dynamics365/business-central/across-faq)

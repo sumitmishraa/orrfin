@@ -69,6 +69,13 @@ Then as Anita (admin) → open it → **Approve** or **Reject** (Vikram can't ap
 **Audit** shows every record's history and verifies its hash chain; **Control Graph** replays the chain.
 Expected results for each PDF: `docs/DEMO_DATA.md`. Extraction accuracy: `evals/extraction/report.md`.
 
+## ERP connectors (Steps 12-20)
+
+Sign in as Anita (admin) → **Connectors**. Every ERP works in **Simulated** mode out of the box (fixtures in that
+ERP's published API format). To connect a real free account: create it, then follow
+[docs/CONNECT_ERPS.md](docs/CONNECT_ERPS.md) (paste keys → Test connection → Prepare demo data → Make active).
+Keys are stored encrypted with `ORRFIN_SECRET_KEY`, which `scripts/dev.ps1` creates in `.env` (ADR 0006).
+
 ## Tests
 
 ```powershell

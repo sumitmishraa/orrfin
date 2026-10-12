@@ -84,9 +84,9 @@ def purchase_order_to_record(doc: dict[str, Any]) -> ErpPurchaseOrder:
         grand_total=_dec(doc.get("grand_total")),
         # ERPNext v15 prefixes custom fields made in the UI with "custom_"; accept both spellings.
         orrfin_ref=doc.get("orrfin_ref") or doc.get("custom_orrfin_ref") or None,
-        # "Prepare demo data" stores the canonical PO number (printed on the demo invoices) here,
-        # because ERPNext names POs from its own naming series.
-        po_number=doc.get("order_confirmation_no") or None,
+        # "Prepare demo data" stores the canonical PO number (printed on the demo invoices) in Orrfin's
+        # own custom field, because ERPNext names POs from its own naming series.
+        po_number=doc.get("orrfin_po_number") or doc.get("custom_orrfin_po_number") or None,
         modified=_modified(doc["modified"]),
         lines=[
             ErpPoLine(

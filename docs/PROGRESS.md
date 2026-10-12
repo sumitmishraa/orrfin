@@ -75,3 +75,6 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 - Security (ADR 0006): keys encrypted with ORRFIN_SECRET_KEY (dev.ps1 creates it), write-only in the API, redacted from every message; SSRF allow-list; no redirects.
 - UI: /connectors (admin) with Live/Sandbox/Simulated badges, Connect form, Test / Prepare / Make active / Disconnect; POs page names the active ERP.
 - Verified: backend suite + 72 contract (simulated + live-seeded ERPNext) + 22 security + 12 connector API tests; tsc + lint clean.
+
+**Step 13 — ERPNext live (12 Oct).** Live adapter + Connect form came with Step 12; this step checked the Frappe facts and hardened the seeder: documented `frappe.client.submit` (not PUT docstatus), own `orrfin_po_number` custom field (no confirmed standard PO-number field), both custom-field spellings. `backend/scripts/prepare_erp.py` = CLI twin of Test + Prepare (+ --activate). Founder guide `docs/CONNECT_ERPS.md` (ERPNext section; later steps add theirs). README section.
+- Verified: contract suite incl. live-seeded ERPNext (seeder runs against a blank simulated Frappe site that demands the saved token), 90 ERP tests. Not verified: a real Frappe Cloud site (no account yet). First real run: watch Test connection's lines.

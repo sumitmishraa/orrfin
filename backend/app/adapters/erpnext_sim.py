@@ -9,6 +9,7 @@ every line of client code. It implements only what Orrfin uses, the way Frappe d
 - GET  /api/resource/<DocType>/<name>        (child tables included)
 - POST /api/resource/<DocType>               (insert; docstatus 0 = draft)
 - PUT  /api/resource/<DocType>/<name>        (update; docstatus 0 → 1 submits)
+- POST /api/method/frappe.client.submit       ({"doc": {...}}: docstatus 0 → 1)
 - GET  /api/method/frappe.auth.get_logged_user
 - POST /api/method/erpnext.buying.doctype.purchase_order.purchase_order.update_status
 
@@ -126,9 +127,9 @@ class FakeFrappeServer:
         docs["Item"] = {line.item_code: {"name": line.item_code, "item_code": line.item_code,
                                          "item_name": line.item_name, "stock_uom": line.uom, "disabled": 0}
                         for po in data.purchase_orders for line in po.lines}
-        docs["Custom Field"] = {"Purchase Order-orrfin_ref": {
-            "name": "Purchase Order-orrfin_ref", "dt": "Purchase Order", "fieldname": "orrfin_ref",
-            "fieldtype": "Data", "unique": 1, "read_only": 1}}
+        docs["Custom Field"] = {f"Purchase Order-{f}": {
+            "name": f"Purchase Order-{f}", "dt": "Purchase Order", "fieldname": f, "fieldtype": "Data",
+            "unique": int(f == "orrfin_ref"), "read_only": 1} for f in ("orrfin_ref", "orrfin_po_number")}
         docs[SINGLE] = {SINGLE: {"name": SINGLE, "check_supplier_invoice_uniqueness": 1}}
         return docs
 
@@ -150,6 +151,9 @@ class FakeFrappeServer:
             return _reply(200, {"message": "orrfin-integration@demo.orrfin.ai"})
         if path.endswith("purchase_order.update_status"):
             return self._update_status(json.loads(request.content or b"{}"))
+        if path == "/api/method/frappe.client.submit":
+            doc = json.loads(request.content or b"{}", parse_float=Decimal).get("doc") or {}
+            return self._update(doc.get("doctype", ""), doc.get("name", ""), {"docstatus": 1})
         if not path.startswith("/api/resource/"):
             return _error(404, "DoesNotExistError", f"No route {path}")
         parts = path[len("/api/resource/"):].split("/", 1)
