@@ -232,6 +232,8 @@ export interface InvoiceDetail extends InvoiceSummary {
   allowed: { edit: boolean; confirm: boolean; decide: boolean; approve_blocked_reason: string | null };
   match: MatchView | null;
   decisions: { decision: string; reason: string | null; reviewer_name: string; at: string }[];
+  erp_sync: ErpSync | null; // Step 14: the draft bill in the ERP
+  erp_sync_note: string | null; // why an approved invoice was not sent to the ERP
 }
 
 export interface AuditEntity {
@@ -367,4 +369,16 @@ export interface ActiveErp {
   mode: "simulated" | "live";
   label: ErpLabel;
   capabilities: Capabilities | null;
+}
+
+/** One document's ERP write-back (BUILD_PLAN §8 outbox). */
+export interface ErpSync {
+  id: string;
+  state: "PENDING" | "SENT" | "CONFIRMED" | "FAILED" | "UNKNOWN";
+  erp_doc_name: string | null;
+  attempts: number;
+  last_error: string | null;
+  erp: string;
+  label: ErpLabel;
+  doc_type: "purchase_invoice" | "purchase_order";
 }

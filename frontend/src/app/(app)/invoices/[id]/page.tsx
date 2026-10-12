@@ -3,7 +3,7 @@
 /**
  * Invoice page (PROMPTS Steps 7-9): the PDF on the left, the fields on the right (evidence on hover,
  * failed checks highlighted, editable while under review), then the match result in plain English,
- * the PO / receipt / invoice comparison, and the decision. Buttons come from the server's `allowed`,
+ * the PO / receipt / invoice comparison, the decision, and the draft bill's ERP status (Step 14). Buttons come from the server's `allowed`,
  * computed with the same rules that enforce the action (BUILD_PLAN §9).
  */
 import { useEffect, useState } from "react";
@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CircleAlert, CircleCheck, CircleX, Info, Network, RotateCcw, Sparkles, TriangleAlert } from "lucide-react";
 
+import { ErpSyncPanel } from "@/components/erp-sync-panel";
 import { InvoiceStatus } from "@/components/invoice-status";
 import { ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
 import { Button } from "@/components/ui/button";
@@ -280,6 +281,7 @@ export default function InvoicePage() {
               </ul>
             </Panel>
           ) : null}
+          <ErpSyncPanel sync={invoice.erp_sync} note={invoice.erp_sync_note} what="bill" onChange={() => void reload()} />
           <Panel title="History">
             <ol className="flex flex-col gap-2 text-sm">
               {invoice.timeline.map((e) => (

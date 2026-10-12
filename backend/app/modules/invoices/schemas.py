@@ -97,6 +97,8 @@ class InvoiceDetail(InvoiceSummary):
     allowed: InvoiceAllowed
     match: dict[str, Any] | None = None  # Step 8: rule results, explanation, PO / receipt comparison
     decisions: list[dict[str, Any]] = Field(default_factory=list)  # Step 9
+    erp_sync: dict[str, Any] | None = None  # Step 14: the draft bill's outbox status in the ERP
+    erp_sync_note: str | None = None  # Step 14: why an approved invoice was not queued for the ERP
 
 
 class LineEdit(BaseModel):

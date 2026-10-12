@@ -30,6 +30,7 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `backend/app/modules/procurement/service.py` | Intake → routing → approval chain; every §9 rule lives in `decision_refusal` |
 | `backend/app/modules/sync/` | ERP pull from the org's active connection (upsert by `erp_connection_id` + `erp_ref`, skip unchanged) and the read-only vendor/PO routes |
 | `backend/app/modules/connectors/` | The Connectors page API: save encrypted keys, Test connection, Prepare demo data (job), Make active, Disconnect; one active connection per org (ADR 0006) |
+| `backend/app/modules/erp_outbox/` | §8 write-back: queue on approval (same transaction), `erp_push` job (SENT committed before the call; UNKNOWN → look up first), Retry sync; generic over doc type and ERP |
 | `backend/app/security/` | `secrets.py` (Fernet encryption of ERP keys with `ORRFIN_SECRET_KEY`), `outbound.py` (ERP host allow-list, no redirects, timeouts, error → FAILED/UNKNOWN mapping, `redact()`) |
 | `backend/app/erp_demo/canonical.py` | The one canonical demo dataset (5 vendors, 8 POs, 8 receipts) every connector renders and seeds from |
 | `backend/app/modules/audit/service.py` | `record_event` (hash-chained per entity) and `verify_chain` |

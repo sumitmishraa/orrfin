@@ -6,7 +6,7 @@ Rules, all enforced here on the server:
 - whoever uploaded or edited the invoice cannot approve it (403);
 - approving needs an approval limit at least the invoice total (403);
 - rejecting, requesting a correction or approving an exception needs a reason (422).
-An approved invoice is "ready for ERP draft"; the outbox write-back arrives in Steps 11-13.
+Approving also queues the draft bill for the ERP in the same transaction (modules/erp_outbox, §8).
 """
 
 import uuid
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.errors import Conflict, DomainError, Forbidden, Invalid
 from app.models import Document, FieldEdit, Invoice, ReviewDecision, User
 from app.modules.audit.service import record_event
+from app.modules.erp_outbox.service import queue_bill
 from app.modules.invoices.match_job import current_staleness, start_match
 from app.modules.invoices.service import load_invoice
 
@@ -63,6 +64,9 @@ def decide(db: Session, user: User, invoice_id: uuid.UUID, decision: str, reason
     record_event(db, org_id=invoice.org_id, entity_type="invoice", entity_id=invoice.id, actor_id=user.id,
                  action=f"decision_{decision}",
                  payload={"status": invoice.status, "from": previous, "reason": reason, "total": invoice.total})
+    if decision == "approve":
+        # §8 step 1: outbox row + job + audit event in the same transaction as the approval.
+        queue_bill(db, invoice, user.id)
     return invoice
 
 
