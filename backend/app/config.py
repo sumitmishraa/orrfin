@@ -41,8 +41,13 @@ class Settings(BaseSettings):
     # Browsers only send Secure cookies over HTTPS; local development is plain HTTP.
     session_cookie_secure: bool = False
 
-    # Where the fake ERPNext adapter reads its JSON fixtures (Step 4); relative to the repo root.
+    # Where the simulated ERPNext reads its JSON fixtures (Step 4); relative to the repo root.
     erp_fixtures_dir: str = "seed/erpnext"
+    # Master key that encrypts ERP credentials saved on the Connectors page (ADR 0006). A Fernet key:
+    # scripts/dev.ps1 creates one in .env on first run. Never committed; Secrets Manager on AWS.
+    orrfin_secret_key: SecretStr | None = None
+    # Where the browser is sent back after an ERP's OAuth sign-in (Zoho, Step 20).
+    public_web_url: str = "http://localhost:3000"
 
     # --- AI (BUILD_PLAN §3 AI row, §7). One provider serves extraction and explanations.
     # "gemini" (Google Gemini API: the working provider until Bedrock access is granted, ADR 0005),

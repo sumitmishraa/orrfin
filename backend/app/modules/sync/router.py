@@ -1,7 +1,8 @@
 """HTTP routes for the ERP mirror (BUILD_PLAN §2 read-only mirror; PROMPTS Step 4).
 
 "Sync from ERP" queues an erp_pull job for the worker and returns at once; the page
-polls GET /jobs/{id}. Vendors and POs are read-only here: ERPNext owns them.
+polls GET /jobs/{id}. Vendors and POs are read-only here: the connected ERP owns them.
+Lists show the org's active ERP connection only (v2.2).
 """
 
 import uuid
@@ -16,6 +17,7 @@ from sqlalchemy import func, select
 from app.auth.dependencies import CurrentUser, DbSession, require_roles
 from app.jobs import enqueue
 from app.models import GoodsReceipt, GrnLine, Job, PoLine, PurchaseOrder, User, Vendor
+from app.modules.connectors.service import active_connection
 
 router = APIRouter(tags=["erp mirror"])
 
@@ -45,6 +47,7 @@ class VendorOut(BaseModel):
 class PoSummary(BaseModel):
     id: uuid.UUID
     erp_ref: str
+    po_number: str | None = None
     vendor_name: str | None
     po_date: date | None
     schedule_date: date | None
@@ -88,7 +91,9 @@ class PoDetail(PoSummary):
 @router.post("/sync/erp", response_model=JobOut, status_code=status.HTTP_202_ACCEPTED)
 def start_erp_sync(db: DbSession,
                    user: User = Depends(require_roles("admin", "finance", "buyer"))) -> Job:
-    job = enqueue(db, org_id=user.org_id, kind="erp_pull", created_by=user.id)
+    connection = active_connection(db, user.org_id)
+    job = enqueue(db, org_id=user.org_id, kind="erp_pull", payload={"connection_id": str(connection.id)},
+                  created_by=user.id)
     db.commit()
     return job
 
@@ -103,7 +108,9 @@ def get_job(job_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Job:
 
 @router.get("/vendors", response_model=list[VendorOut])
 def list_vendors(user: CurrentUser, db: DbSession) -> list[Vendor]:
-    return list(db.scalars(select(Vendor).where(Vendor.org_id == user.org_id).order_by(Vendor.name)))
+    connection = active_connection(db, user.org_id)
+    return list(db.scalars(select(Vendor).where(Vendor.org_id == user.org_id,
+                                                Vendor.erp_connection_id == connection.id).order_by(Vendor.name)))
 
 
 def _received_by_line(db, org_id: uuid.UUID, po_ids: list[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
@@ -121,7 +128,8 @@ def list_purchase_orders(user: CurrentUser, db: DbSession) -> list[PoSummary]:
     rows = db.execute(
         select(PurchaseOrder, Vendor.name)
         .outerjoin(Vendor, Vendor.id == PurchaseOrder.vendor_id)
-        .where(PurchaseOrder.org_id == user.org_id)
+        .where(PurchaseOrder.org_id == user.org_id,
+               PurchaseOrder.erp_connection_id == active_connection(db, user.org_id).id)
         .order_by(PurchaseOrder.po_date.desc(), PurchaseOrder.erp_ref.desc())
     ).all()
     po_ids = [po.id for po, _ in rows]
@@ -133,7 +141,7 @@ def list_purchase_orders(user: CurrentUser, db: DbSession) -> list[PoSummary]:
         ordered[line.po_id] = ordered.get(line.po_id, Decimal("0")) + line.qty
         got[line.po_id] = got.get(line.po_id, Decimal("0")) + received.get(line.id, Decimal("0"))
     return [
-        PoSummary(id=po.id, erp_ref=po.erp_ref, vendor_name=vendor_name, po_date=po.po_date,
+        PoSummary(id=po.id, erp_ref=po.erp_ref, po_number=po.po_number, vendor_name=vendor_name, po_date=po.po_date,
                   schedule_date=po.schedule_date, status=po.status, origin=po.origin,
                   grand_total=po.grand_total, qty_ordered=ordered.get(po.id, Decimal("0")),
                   qty_received=got.get(po.id, Decimal("0")))
@@ -163,7 +171,7 @@ def get_purchase_order(po_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Po
         for l in lines
     ]
     return PoDetail(
-        id=po.id, erp_ref=po.erp_ref, vendor_name=vendor.name if vendor else None,
+        id=po.id, erp_ref=po.erp_ref, po_number=po.po_number, vendor_name=vendor.name if vendor else None,
         vendor_gstin=vendor.gstin if vendor else None, po_date=po.po_date,
         schedule_date=po.schedule_date, status=po.status, origin=po.origin, currency=po.currency,
         net_total=po.net_total, tax_total=po.tax_total, grand_total=po.grand_total,

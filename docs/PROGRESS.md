@@ -69,3 +69,9 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 - Verified: 178 backend tests pass (9 new stub-client Gemini tests; no network). Live Gemini call NOT yet run: needs the key.
 - Founder: paste key into `.env` `GEMINI_API_KEY=`, set `AI_PROVIDER=gemini`, then run `run_extraction_eval.py --provider gemini --out evals/extraction/report-gemini.md`.
 - Note: pip inside the Claude sandbox hangs on pypi.org; installs must run outside it. Free-tier Gemini may use prompts for training: synthetic data only.
+
+**Step 12 — multi-ERP plug (12 Oct).** Port extended (capabilities, test_connection, draft bill/PO + find_bill/find_po, seed_demo_data; ErpRejected/ErpUnknown/ErpNotSupported). `adapters/registry.py` catalogue of 11 ERPs (fields, host policy, simulated/live factories); `erp_connections` + `erp_connection_id` on mirror rows + `purchase_orders.po_number` (migration 5b1e7c2d9a40; existing data → "ERPNext · simulated"). Canonical dataset `app/erp_demo/canonical.py`; ERPNext renderer reproduces seed/erpnext byte-for-byte.
+- ERPNext adapter is HTTP code (`erpnext_client.py`); simulated mode = same code + in-process Frappe server (`erpnext_sim.py`, MockTransport, writes persisted in storage/erp-sim/). Live mode needs only URL + API key/secret; "Prepare demo data" also creates the orrfin_ref field, turns on bill-no uniqueness, adds GST accounts.
+- Security (ADR 0006): keys encrypted with ORRFIN_SECRET_KEY (dev.ps1 creates it), write-only in the API, redacted from every message; SSRF allow-list; no redirects.
+- UI: /connectors (admin) with Live/Sandbox/Simulated badges, Connect form, Test / Prepare / Make active / Disconnect; POs page names the active ERP.
+- Verified: backend suite + 72 contract (simulated + live-seeded ERPNext) + 22 security + 12 connector API tests; tsc + lint clean.

@@ -1,37 +1,30 @@
-"""FakeErpnextAdapter: serves seed/erpnext/*.json as if it were ERPNext (BUILD_PLAN §3, PROMPTS Step 4).
+"""Simulated ERPNext: the real ERPNext adapter talking to the in-process Frappe server (BUILD_PLAN §3, §4;
+PROMPTS Steps 4 and 12).
 
-Used until the live Frappe Cloud trial starts (Step 11). The fixtures are shaped like
-ERPNext REST replies, and they go through the same translation functions as the live
-adapter, so switching over changes the transport only.
+`FakeErpnextAdapter(fixtures_dir)` serves seed/erpnext/*.json as if it were an ERPNext site. Since
+Step 12 it is the live adapter's own HTTP code with `erpnext_sim.FakeFrappeServer` behind it, so the
+simulated connector, the tests and the live connector share every line except the transport.
+Writes (draft bills and POs) go to `store`, which defaults to memory; the registry passes a file
+store so drafts survive a worker restart.
 """
 
 from pathlib import Path
-from typing import Any
 
-from app.adapters.erpnext import (
-    is_submitted,
-    load_erpnext_json,
-    purchase_order_to_record,
-    purchase_receipt_to_record,
-    supplier_to_vendor,
-)
-from app.ports.erp import ErpPurchaseOrder, ErpReceipt, ErpVendor
+import httpx
+
+from app.adapters.erpnext_client import ErpnextAdapter
+from app.adapters.erpnext_sim import FakeFrappeServer
+from app.adapters.sim_store import SimStore
+from app.security.outbound import ErpHttp
+
+SIMULATED_BASE_URL = "https://erpnext.simulated.orrfin.local"
 
 
-class FakeErpnextAdapter:
-    def __init__(self, fixtures_dir: Path):
-        self.fixtures_dir = fixtures_dir
+def simulated_http(server: FakeFrappeServer, erp_name: str = "ERPNext (simulated)") -> ErpHttp:
+    return ErpHttp(base_url=SIMULATED_BASE_URL, transport=httpx.MockTransport(server), erp_name=erp_name)
 
-    def _docs(self, filename: str) -> list[dict[str, Any]]:
-        payload = load_erpnext_json((self.fixtures_dir / filename).read_text(encoding="utf-8"))
-        return payload["data"]
 
-    def list_vendors(self) -> list[ErpVendor]:
-        # Suppliers are masters (never submitted), so "disabled" is the filter, not docstatus.
-        return [supplier_to_vendor(d) for d in self._docs("suppliers.json") if not d.get("disabled")]
-
-    def list_purchase_orders(self) -> list[ErpPurchaseOrder]:
-        return [purchase_order_to_record(d) for d in self._docs("purchase_orders.json") if is_submitted(d)]
-
-    def list_receipts(self) -> list[ErpReceipt]:
-        return [purchase_receipt_to_record(d) for d in self._docs("purchase_receipts.json") if is_submitted(d)]
+class FakeErpnextAdapter(ErpnextAdapter):
+    def __init__(self, fixtures_dir: Path, store: SimStore | None = None):
+        self.server = FakeFrappeServer(fixtures_dir, store or SimStore(None))
+        super().__init__(simulated_http(self.server), label="simulated")

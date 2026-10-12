@@ -10,7 +10,7 @@ from collections import defaultdict
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -28,6 +28,7 @@ from app.models import (
     Vendor,
 )
 from app.modules.audit.service import record_event, to_jsonable
+from app.modules.connectors.service import active_connection
 from app.modules.invoices.providers import get_explainer
 from app.modules.invoices.service import invoice_lines
 from app.modules.matching.config import RULE_SET_VERSION, Tolerances
@@ -48,10 +49,16 @@ def _buyer_state(invoice: Invoice) -> str:
 
 
 def find_po(db: Session, invoice: Invoice) -> PurchaseOrder | None:
+    """The PO the invoice quotes, in the active ERP: by the ERP's own id, or by the printed PO number."""
     if not invoice.po_reference:
         return None
-    return db.scalar(select(PurchaseOrder).where(PurchaseOrder.org_id == invoice.org_id,
-                                                 PurchaseOrder.erp_ref == invoice.po_reference.strip()))
+    ref = invoice.po_reference.strip()
+    connection = active_connection(db, invoice.org_id)
+    matches = db.scalars(select(PurchaseOrder).where(
+        PurchaseOrder.org_id == invoice.org_id, PurchaseOrder.erp_connection_id == connection.id,
+        or_(PurchaseOrder.erp_ref == ref, PurchaseOrder.po_number == ref))).all()
+    # Prefer the ERP's own id when both happen to exist.
+    return next((p for p in matches if p.erp_ref == ref), matches[0] if matches else None)
 
 
 def erp_snapshot(db: Session, po: PurchaseOrder | None) -> dict[str, Any]:

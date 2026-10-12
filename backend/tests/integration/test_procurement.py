@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from app.models import ApprovalPolicy, AuditEvent, Category, PurchaseRequest, Vendor
 from app.modules.audit.service import verify_chain
+from app.modules.connectors.service import active_connection
 from app.seed_demo import POLICIES
 from tests.conftest import login
 
@@ -41,7 +42,8 @@ def world(db, factory) -> World:
     admin = factory.user(org, "admin", limit="10000000", name="Admin")
     category = Category(org_id=org.id, name="IT hardware", buyer_id=buyer.id)
     orphan = Category(org_id=org.id, name="Unowned category", buyer_id=None)
-    vendor = Vendor(org_id=org.id, erp_ref="Kaveri IT", name="Kaveri IT Solutions LLP",
+    vendor = Vendor(org_id=org.id, erp_connection_id=active_connection(db, org.id).id,
+                    erp_ref="Kaveri IT", name="Kaveri IT Solutions LLP",
                     gstin="29AAKFK3310P1Z5", state_code="29", erp_modified=datetime.now(UTC))
     db.add_all([category, orphan, vendor])
     for low, high, steps in POLICIES:

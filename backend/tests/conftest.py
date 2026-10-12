@@ -14,6 +14,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import InterfaceError, OperationalError
@@ -30,6 +31,8 @@ os.environ["DATABASE_URL"] = _test_url.render_as_string(hide_password=False)
 # Tests read invoices with the answer-key extractor and keep uploads in a throwaway folder.
 os.environ["AI_PROVIDER"] = "fake"
 os.environ["FILE_STORE_DIR"] = tempfile.mkdtemp(prefix="orrfin-test-files-")
+# A throwaway master key, so tests never read or depend on the developer's real one.
+os.environ["ORRFIN_SECRET_KEY"] = Fernet.generate_key().decode()
 get_settings.cache_clear()
 
 

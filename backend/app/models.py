@@ -1,4 +1,4 @@
-"""SQLAlchemy models for every table in BUILD_PLAN §5 (v2.1), plus `sessions` for login (§3, §9).
+"""SQLAlchemy models for every table in BUILD_PLAN §5 (v2.2), plus `sessions` for login (§3, §9).
 
 Owns the schema only; business rules live in app/modules/*. Conventions (§5):
 - every business table has `id` (uuid), `org_id` (indexed), `created_at`, `updated_at`;
@@ -45,6 +45,8 @@ REQUEST_STATUSES = (
 DECISIONS = ("approve", "reject", "return")
 JOB_STATUSES = ("queued", "running", "done", "failed")
 OUTBOX_STATES = ("PENDING", "SENT", "CONFIRMED", "FAILED", "UNKNOWN")
+CONNECTION_MODES = ("simulated", "live")
+CONNECTION_STATUSES = ("not_connected", "connected", "error")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -100,11 +102,43 @@ class UserSession(TimestampMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-class Vendor(TimestampMixin, Base):
-    __tablename__ = "vendors"
-    __table_args__ = (UniqueConstraint("org_id", "erp_ref"),)
+
+class ErpConnection(TimestampMixin, Base):
+    """One way an org can reach one ERP: simulated (fixtures) or live (its own keys). §5 v2.2, ADR 0004/0006.
+
+    Exactly one connection per org is active; sync, invoice matching and write-back all use it.
+    Credentials are one Fernet token (app/security/secrets.py); the browser never sees them.
+    """
+    __tablename__ = "erp_connections"
+    __table_args__ = (
+        UniqueConstraint("org_id", "system", "mode"),
+        CheckConstraint(_in("mode", CONNECTION_MODES), name="mode"),
+        CheckConstraint(_in("status", CONNECTION_STATUSES), name="status"),
+        Index("uq_erp_connections_one_active", "org_id", unique=True, postgresql_where=text("is_active")),
+    )
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID] = _org_fk()
+    system: Mapped[str] = mapped_column(String(40), nullable=False)
+    mode: Mapped[str] = mapped_column(String(10), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    credentials_encrypted: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="not_connected")
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_check: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
+def _conn_fk() -> Mapped[uuid.UUID]:
+    return mapped_column(UUID(as_uuid=True), ForeignKey("erp_connections.id"), nullable=False, index=True)
+
+
+class Vendor(TimestampMixin, Base):
+    __tablename__ = "vendors"
+    __table_args__ = (UniqueConstraint("org_id", "erp_connection_id", "erp_ref"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    # Which ERP connection this mirrored row came from (§5 v2.2): two ERPs may reuse a ref.
+    erp_connection_id: Mapped[uuid.UUID] = _conn_fk()
     erp_ref: Mapped[str] = mapped_column(String(140), nullable=False)
     erp_modified: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -196,11 +230,13 @@ class RequestApproval(TimestampMixin, Base):
 class PurchaseOrder(TimestampMixin, Base):
     __tablename__ = "purchase_orders"
     __table_args__ = (
-        UniqueConstraint("org_id", "erp_ref"),
+        UniqueConstraint("org_id", "erp_connection_id", "erp_ref"),
         CheckConstraint(_in("origin", ("orrfin", "erp")), name="origin"),
     )
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID] = _org_fk()
+    # Which ERP connection this mirrored row came from (§5 v2.2): two ERPs may reuse a ref.
+    erp_connection_id: Mapped[uuid.UUID] = _conn_fk()
     erp_ref: Mapped[str] = mapped_column(String(140), nullable=False)
     erp_modified: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id"))
@@ -213,13 +249,17 @@ class PurchaseOrder(TimestampMixin, Base):
     grand_total: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
     request_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("purchase_requests.id"))
     origin: Mapped[str] = mapped_column(String(10), nullable=False, server_default="erp")
+    # The PO number printed on invoices when the ERP names its record differently (ports/erp.py).
+    po_number: Mapped[str | None] = mapped_column(String(140), index=True)
 
 
 class PoLine(TimestampMixin, Base):
     __tablename__ = "po_lines"
-    __table_args__ = (UniqueConstraint("org_id", "erp_ref"),)
+    __table_args__ = (UniqueConstraint("org_id", "erp_connection_id", "erp_ref"),)
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID] = _org_fk()
+    # Which ERP connection this mirrored row came from (§5 v2.2): two ERPs may reuse a ref.
+    erp_connection_id: Mapped[uuid.UUID] = _conn_fk()
     po_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=False, index=True)
     erp_ref: Mapped[str] = mapped_column(String(140), nullable=False)
@@ -236,9 +276,11 @@ class PoLine(TimestampMixin, Base):
 
 class GoodsReceipt(TimestampMixin, Base):
     __tablename__ = "goods_receipts"
-    __table_args__ = (UniqueConstraint("org_id", "erp_ref"),)
+    __table_args__ = (UniqueConstraint("org_id", "erp_connection_id", "erp_ref"),)
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID] = _org_fk()
+    # Which ERP connection this mirrored row came from (§5 v2.2): two ERPs may reuse a ref.
+    erp_connection_id: Mapped[uuid.UUID] = _conn_fk()
     erp_ref: Mapped[str] = mapped_column(String(140), nullable=False)
     erp_modified: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id"))
@@ -248,9 +290,11 @@ class GoodsReceipt(TimestampMixin, Base):
 
 class GrnLine(TimestampMixin, Base):
     __tablename__ = "grn_lines"
-    __table_args__ = (UniqueConstraint("org_id", "erp_ref"),)
+    __table_args__ = (UniqueConstraint("org_id", "erp_connection_id", "erp_ref"),)
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID] = _org_fk()
+    # Which ERP connection this mirrored row came from (§5 v2.2): two ERPs may reuse a ref.
+    erp_connection_id: Mapped[uuid.UUID] = _conn_fk()
     receipt_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("goods_receipts.id"), nullable=False, index=True)
     erp_ref: Mapped[str] = mapped_column(String(140), nullable=False)
@@ -413,6 +457,8 @@ class ErpOutbox(TimestampMixin, Base):
     )
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID] = _org_fk()
+    # The ERP this document is written to; fixed when the row is created (§8).
+    erp_connection_id: Mapped[uuid.UUID] = _conn_fk()
     idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     doc_type: Mapped[str] = mapped_column(String(20), nullable=False)
     invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id"))

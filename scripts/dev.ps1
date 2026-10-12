@@ -160,6 +160,14 @@ if (-not (Test-Path $PipStamp) -or (Get-Item $Pyproject).LastWriteTime -gt (Get-
     Set-Content $PipStamp (Get-Date -Format o)
 }
 
+# ERP keys typed on the Connectors page are encrypted with this master key (docs/adr/0006).
+# Created once, stored only in .env (git-ignored). Changing it makes saved ERP keys unreadable.
+if (-not (Read-DotEnv)['ORRFIN_SECRET_KEY']) {
+    $NewKey = & $VenvPy -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    Add-Content -Path $EnvFile -Encoding ascii -Value "`n# Encrypts ERP credentials (created by dev.ps1; never share or commit)`nORRFIN_SECRET_KEY=$NewKey"
+    Write-Host 'Created ORRFIN_SECRET_KEY in .env (encrypts ERP keys saved on the Connectors page).'
+}
+
 Write-Host 'Applying database migrations and demo data...'
 Push-Location $Backend
 try {

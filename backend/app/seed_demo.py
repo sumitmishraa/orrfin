@@ -1,4 +1,5 @@
-"""Demo seed: one org, five users, three categories and the §9 approval tiers (PROMPTS Step 3).
+"""Demo seed: one org, five users, three categories, the §9 approval tiers and the ERP connection rows
+(PROMPTS Steps 3 and 12).
 
 Safe to run repeatedly: existing rows are found by name/email and left as they are,
 so demo requests created in the app survive a re-run. All people and data are fictional.
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.auth.passwords import hash_password
 from app.db import SessionLocal
 from app.models import ApprovalPolicy, Category, Org, User
+from app.modules.connectors.service import ensure_connections
 
 ORG_NAME = "Orrfin Demo Co"
 DEMO_PASSWORD = "Orrfin@Demo2026"
@@ -63,6 +65,9 @@ def seed(db: Session) -> Org:
     if db.scalar(select(func.count()).select_from(ApprovalPolicy).where(ApprovalPolicy.org_id == org.id)) == 0:
         for low, high, steps in POLICIES:
             db.add(ApprovalPolicy(org_id=org.id, min_amount=low, max_amount=high, steps=steps))
+
+    # One connection row per catalogue ERP; simulated ERPNext is active until the admin picks another.
+    ensure_connections(db, org.id)
 
     db.commit()
     return org

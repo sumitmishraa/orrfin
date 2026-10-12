@@ -28,7 +28,10 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `backend/app/auth/` | Login (argon2), server-side sessions, `current_user` and role guards |
 | `backend/app/modules/` | Business modules: procurement, invoices, matching (pure), review, audit, sync |
 | `backend/app/modules/procurement/service.py` | Intake → routing → approval chain; every §9 rule lives in `decision_refusal` |
-| `backend/app/modules/sync/` | ERP pull (upsert by `erp_ref`, skip unchanged) and the read-only vendor/PO routes |
+| `backend/app/modules/sync/` | ERP pull from the org's active connection (upsert by `erp_connection_id` + `erp_ref`, skip unchanged) and the read-only vendor/PO routes |
+| `backend/app/modules/connectors/` | The Connectors page API: save encrypted keys, Test connection, Prepare demo data (job), Make active, Disconnect; one active connection per org (ADR 0006) |
+| `backend/app/security/` | `secrets.py` (Fernet encryption of ERP keys with `ORRFIN_SECRET_KEY`), `outbound.py` (ERP host allow-list, no redirects, timeouts, error → FAILED/UNKNOWN mapping, `redact()`) |
+| `backend/app/erp_demo/canonical.py` | The one canonical demo dataset (5 vendors, 8 POs, 8 receipts) every connector renders and seeds from |
 | `backend/app/modules/audit/service.py` | `record_event` (hash-chained per entity) and `verify_chain` |
 | `backend/app/jobs.py`, `worker.py` | Postgres job queue (`SKIP LOCKED`, retries, stale-job recovery) and its worker process |
 | `backend/app/modules/invoices/` | Upload, `extract` job, validation (`validation.py`), edits/confirm, `match_job.py` (DB ↔ engine bridge) |
@@ -38,11 +41,11 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `backend/app/errors.py` | Business refusals (403/404/409/422) with plain-English reasons |
 | `backend/app/seed_demo.py` | Demo org, 5 users, 3 categories, 3 approval tiers (idempotent) |
 | `backend/app/ports/` | Interfaces: Extractor, ErpAdapter, FileStore, Clock |
-| `backend/app/adapters/` | Implementations of the ports; the only place ERP-specific field names may appear (`erpnext.py` translates, `erpnext_fake.py` serves `seed/erpnext/`). *Planned (v2.2, Steps 12–20):* `registry.py` plus one adapter per ERP (Tally, BUSY, Business Central, Dynamics F&O, SAP S/4HANA, SAP Business One, Oracle Fusion, NetSuite, Zoho Books, Odoo), each labelled Live / Sandbox / Simulated. Catalogue and per-ERP mapping: [ERP_CONNECTORS.md](ERP_CONNECTORS.md) |
-| `frontend/src/app/(app)/` | Logged-in pages: Inbox, Requests, Invoices (list, upload, review/match/decision), POs, Vendors, Audit, Control Graph, Trust |
+| `backend/app/adapters/` | Implementations of the ports; the only place ERP-specific field names may appear. `registry.py` = the connector catalogue (fields, host rules, simulated/live factories) and `get_adapter()`. Per ERP: `<erp>.py` translates documents, `<erp>_client.py` is the HTTP adapter, `<erp>_sim.py` is the in-process simulated server (httpx MockTransport) used in simulated mode and tests, `<erp>_fixtures.py` renders the canonical dataset; `sim_store.py` persists simulated writes. Catalogue and per-ERP mapping: [ERP_CONNECTORS.md](ERP_CONNECTORS.md) |
+| `frontend/src/app/(app)/` | Logged-in pages: Inbox, Requests, Invoices (list, upload, review/match/decision), POs, Vendors, Audit, Control Graph, Trust, Connectors (admin) |
 | `frontend/src/proxy.ts`, `next.config.ts` | Redirect to /login without a session cookie; `/api/*` is forwarded to FastAPI (same-origin cookie) |
 | `backend/alembic/` | Migrations (additive only during demo week) |
-| `backend/tests/` | `unit/`, `integration/` now; `contract/`, `failure/` later |
+| `backend/tests/` | `unit/`, `integration/`, `contract/` (`test_erp_adapter_contract.py` runs every adapter in `erp_adapters.py`), `failure/` (Step 14) |
 | `frontend/src/styles/tokens.css` | Brand colours from `docs/BRAND.md` |
 | `frontend/src/app/globals.css` | Maps brand tokens to Tailwind + shadcn/ui theme names |
 | `frontend/src/components/ui/` | shadcn/ui components |

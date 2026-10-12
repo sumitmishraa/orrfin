@@ -23,6 +23,8 @@ field names. Write-back (§8) was not yet built.
 - §8 safety rules are unchanged for every ERP. Each adapter defines what "draft" means and which key the lookup-before-retry uses
   (BUILD_PLAN §8 table). Where an ERP has no draft PO through its API (SAP S/4HANA), Orrfin drafts a purchase requisition instead.
 
+**As built (Step 12, 12 Oct):** each connector has a *simulated* and, where a free system exists, a *live* `erp_connections` row; keys are typed on the Connectors page and stored encrypted (ADR 0006). Mirrored POs gained `po_number` so invoices quoting the canonical PO number match in ERPs that name records differently.
+
 ## Consequences
 - Adding an ERP later = one adapter + one renderer + passing the shared suite; the core (matching, review, audit, outbox) never changes.
 - Five more build steps (16–20) before deploy. Simulated connectors are first in the cut order (keep one SAP, one Oracle, one Microsoft card).

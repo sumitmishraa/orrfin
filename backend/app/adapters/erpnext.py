@@ -1,8 +1,8 @@
 """ERPNext document → Orrfin record translation (BUILD_PLAN §2, §4 adapter rules).
 
 The only place ERPNext field names (supplier_name, gst_hsn_code, purchase_order_item, ...)
-may appear. Both the fake adapter (fixtures, Step 4) and the live REST adapter (Step 11)
-feed ERPNext documents through these functions, so they behave identically.
+may appear. The ERPNext adapter (`erpnext_client.py`) feeds every document through these functions,
+whether it talks to a live site or to the simulated one (`erpnext_sim.py`), so both behave identically.
 
 ERPNext numbers must be parsed with `parse_float=Decimal` (see `load_erpnext_json`)
 so money never passes through float.
@@ -82,7 +82,11 @@ def purchase_order_to_record(doc: dict[str, Any]) -> ErpPurchaseOrder:
         net_total=_dec(doc.get("net_total")),
         tax_total=_dec(doc.get("total_taxes_and_charges")),
         grand_total=_dec(doc.get("grand_total")),
-        orrfin_ref=doc.get("orrfin_ref") or None,
+        # ERPNext v15 prefixes custom fields made in the UI with "custom_"; accept both spellings.
+        orrfin_ref=doc.get("orrfin_ref") or doc.get("custom_orrfin_ref") or None,
+        # "Prepare demo data" stores the canonical PO number (printed on the demo invoices) here,
+        # because ERPNext names POs from its own naming series.
+        po_number=doc.get("order_confirmation_no") or None,
         modified=_modified(doc["modified"]),
         lines=[
             ErpPoLine(

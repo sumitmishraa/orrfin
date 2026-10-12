@@ -1,19 +1,20 @@
 "use client";
 
 /**
- * Purchase orders mirrored from the ERP (PROMPTS Step 4). "Sync from ERP" queues a pull job;
- * the page polls the job and reloads the list when it finishes.
+ * Purchase orders mirrored from the active ERP connection (PROMPTS Steps 4 and 12). "Sync from ERP" queues
+ * a pull job; the page polls the job and reloads the list when it finishes.
  */
 import { useState } from "react";
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 
+import { ErpBadge } from "@/components/erp-badge";
 import { EmptyState, ErrorNotice, Loading, PageHeader, table } from "@/components/page";
 import { useMe } from "@/components/session";
 import { Button } from "@/components/ui/button";
 import { api, post } from "@/lib/api";
 import { formatDate, formatINR, formatQty } from "@/lib/format";
-import type { Job, PoSummary } from "@/lib/types";
+import type { ActiveErp, Job, PoSummary } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
 
 const PO_STATUS: Record<string, string> = {
@@ -41,9 +42,9 @@ function SyncButton({ onDone }: { onDone: () => void }) {
         job = await api<Job>(`/jobs/${job.id}`);
         setState(job.status === "running" ? "Syncing…" : "Queued…");
       }
-      if (job.status === "done" && job.result) {
+      if (job.status === "done" && job.result?.purchase_orders) {
         const po = job.result.purchase_orders;
-        setState(`Synced: ${po.created} new, ${po.updated} updated, ${po.unchanged} unchanged POs`);
+        setState(`Synced from ${job.result.erp ?? "the ERP"}: ${po.created} new, ${po.updated} updated, ${po.unchanged} unchanged POs`);
         onDone();
       } else if (job.status === "failed") {
         setError(`Sync failed: ${job.last_error}`);
@@ -74,15 +75,18 @@ function SyncButton({ onDone }: { onDone: () => void }) {
 export default function PurchaseOrdersPage() {
   const me = useMe();
   const { data, error, loading, reload } = useApi<PoSummary[]>("/purchase-orders");
+  const erp = useApi<ActiveErp>("/connectors/active").data;
   const canSync = ["admin", "finance", "buyer"].includes(me.role);
 
   return (
     <>
       <PageHeader
         title="Purchase orders"
-        description="Read-only mirror of submitted POs and goods receipts in ERPNext (fake ERPNext until Step 11)."
+        description={erp ? `Read-only mirror of submitted POs and goods receipts in ${erp.name}.`
+                         : "Read-only mirror of submitted POs and goods receipts in the connected ERP."}
         actions={canSync ? <SyncButton onDone={reload} /> : undefined}
       />
+      {erp ? <p className="-mt-4 mb-4"><ErpBadge label={erp.label} suffix={erp.name} /></p> : null}
       <ErrorNotice message={error} />
       {loading ? (
         <Loading />
@@ -106,6 +110,8 @@ export default function PurchaseOrdersPage() {
                 <tr key={po.id} className="hover:bg-ice-light">
                   <td className={table.td}>
                     <Link href={`/pos/${po.id}`} className="font-medium text-primary hover:underline">{po.erp_ref}</Link>
+                    {po.po_number && po.po_number !== po.erp_ref
+                      ? <span className="block text-xs text-muted-foreground">PO no. {po.po_number}</span> : null}
                   </td>
                   <td className={table.td}>{po.vendor_name ?? "—"}</td>
                   <td className={table.td}>{formatDate(po.po_date)}</td>

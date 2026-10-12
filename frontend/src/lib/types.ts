@@ -122,13 +122,30 @@ export interface RequestDetail extends RequestSummary {
   allowed: AllowedActions;
 }
 
+export interface SyncCounts {
+  created: number;
+  updated: number;
+  unchanged: number;
+}
+
+/** Job results: an ERP pull returns counts per record type; "Prepare demo data" returns a SeedReport. */
+export interface JobResult {
+  vendors?: SyncCounts;
+  purchase_orders?: SyncCounts;
+  receipts?: SyncCounts;
+  erp?: string;
+  created?: Record<string, number>;
+  existing?: Record<string, number>;
+  notes?: string[];
+}
+
 export interface Job {
   id: string;
   kind: string;
   status: "queued" | "running" | "done" | "failed";
   attempts: number;
   last_error: string | null;
-  result: Record<string, { created: number; updated: number; unchanged: number }> | null;
+  result: JobResult | null;
   created_at: string;
   finished_at: string | null;
 }
@@ -245,6 +262,7 @@ export interface GraphNode {
 export interface PoSummary {
   id: string;
   erp_ref: string;
+  po_number: string | null;
   vendor_name: string | null;
   po_date: string | null;
   schedule_date: string | null;
@@ -277,4 +295,76 @@ export interface PoDetail extends PoSummary {
   erp_modified: string;
   lines: PoLine[];
   receipts: { erp_ref: string; posting_date: string | null; status: string }[];
+}
+
+// --- ERP connectors (Step 12) -----------------------------------------------------------------
+
+export type ErpLabel = "live" | "sandbox" | "simulated";
+
+export interface Capabilities {
+  label: ErpLabel;
+  can_read: boolean;
+  can_write_bill: boolean;
+  can_write_po: boolean;
+  draft_bill_means: string;
+  draft_po_means: string;
+  write_note: string;
+}
+
+export interface CheckStep {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface ConnectionCheck {
+  ok: boolean;
+  steps: CheckStep[];
+}
+
+export interface ConnectionInfo {
+  id: string;
+  mode: "simulated" | "live";
+  label: ErpLabel;
+  is_active: boolean;
+  status: "not_connected" | "connected" | "error";
+  last_checked_at: string | null;
+  last_check: ConnectionCheck | null;
+  last_error: string | null;
+  /** Saved values: never a secret, only whether it is set and its last four characters. */
+  fields: Record<string, { set: boolean; hint: string }>;
+}
+
+export interface CredentialField {
+  name: string;
+  label: string;
+  secret: boolean;
+  help: string;
+  required: boolean;
+  placeholder: string;
+}
+
+export interface ConnectorCard {
+  system: string;
+  name: string;
+  segment: string;
+  live_label: ErpLabel;
+  built: boolean;
+  step: number;
+  signup: string;
+  note: string;
+  has_live_mode: boolean;
+  fields: CredentialField[];
+  capabilities: Capabilities | null;
+  simulated: ConnectionInfo | null;
+  live: ConnectionInfo | null;
+}
+
+export interface ActiveErp {
+  id: string;
+  system: string;
+  name: string;
+  mode: "simulated" | "live";
+  label: ErpLabel;
+  capabilities: Capabilities | null;
 }

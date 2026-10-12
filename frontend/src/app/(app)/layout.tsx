@@ -7,7 +7,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BadgeCheck, Building2, FileText, Inbox, ListChecks, LogOut, Package, ScrollText, ShieldCheck } from "lucide-react";
+import { BadgeCheck, Building2, Cable, FileText, Inbox, ListChecks, LogOut, Package, ScrollText, ShieldCheck } from "lucide-react";
 
 import { SessionProvider, useMe } from "@/components/session";
 import { post } from "@/lib/api";
@@ -21,6 +21,8 @@ const NAV = [
   { href: "/vendors", label: "Vendors", icon: Building2 },
   { href: "/audit", label: "Audit", icon: ScrollText },
   { href: "/trust", label: "Trust", icon: BadgeCheck },
+  // Admin only: which ERP Orrfin reads from and drafts into (Step 12). The server enforces it too.
+  { href: "/connectors", label: "Connectors", icon: Cable, adminOnly: true },
 ];
 
 function Shell({ children }: { children: ReactNode }) {
@@ -42,7 +44,7 @@ function Shell({ children }: { children: ReactNode }) {
           <span className="font-semibold tracking-tight">Orrfin</span>
         </div>
         <nav aria-label="Main" className="flex flex-1 flex-col gap-0.5 px-3 py-2">
-          {NAV.map(({ href, label, icon: Icon }) => {
+          {NAV.filter((item) => !("adminOnly" in item) || me.role === "admin").map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
               <Link key={href} href={href} aria-current={active ? "page" : undefined}

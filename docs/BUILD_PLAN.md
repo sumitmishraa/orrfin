@@ -193,7 +193,7 @@ Every business table has `id (uuid)`, `org_id (uuid, not null, indexed)`, `creat
 | Table | Key columns |
 |---|---|
 | `orgs`, `users` | `users.role` ∈ {requester, buyer, approver, finance, admin}; `approval_limit NUMERIC`; `manager_id` (nullable, for the first approval step) |
-| `erp_connections` *(v2.2)* | `system` ∈ {erpnext, tally, busy, business_central, dynamics_fo, sap_s4, sap_b1, oracle_fusion, netsuite, zoho_books, odoo}, `product_name`, `label` ∈ {live, sandbox, simulated}, `mode` ∈ {fake, live}, `base_url` (nullable; no secrets), `active` (at most one active per org) |
+| `erp_connections` *(v2.2; as built 12 Oct, ADR 0006)* | `system` ∈ {erpnext, tallyprime, busy, business_central, dynamics_fo, sap_s4, sap_b1, oracle_fusion, netsuite, zoho_books, odoo}, `mode` ∈ {simulated, live} (unique per org + system + mode), `is_active` (exactly one per org, partial unique index), `credentials_encrypted` (one Fernet token holding the site address and keys; founder-approved), `status` ∈ {not_connected, connected, error}, `last_checked_at`, `last_check`, `last_error`. Product name and the Live / Sandbox / Simulated label come from the connector catalogue (`app/adapters/registry.py`), not the table. |
 | `vendors` | `erp_connection_id` *(v2.2)*, `erp_ref`, `erp_modified`, `name`, `gstin`, `state_code` |
 | `categories` *(v2.1)* | `name` (e.g. IT hardware, Office supplies, Services), `buyer_id` (the owning buyer), `active` |
 | `approval_policies` *(v2.1)* | `min_amount`, `max_amount` (nullable = no ceiling), `steps jsonb` (ordered roles, e.g. `["manager","finance"]`), `active`; the tier whose range contains the request amount applies |
