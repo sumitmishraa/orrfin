@@ -133,8 +133,10 @@ def test_submitting_the_draft_in_the_erp_then_syncing_opens_the_po(client, db, m
     pull_from_erp(db, team["org"].id, adapter)
     db.commit()
 
+    # Some ERPs give the submitted PO a new number (SAP Business One adds a draft as a new document), so the
+    # link that counts is the one Orrfin keeps: the request id found through the PO's Orrfin key.
     po = db.scalar(select(PurchaseOrder).where(PurchaseOrder.org_id == team["org"].id,
-                                               PurchaseOrder.erp_ref == row.erp_doc_name))
-    assert po.origin == "orrfin" and str(po.request_id) == request_id
+                                               PurchaseOrder.request_id == request_id))
+    assert po is not None and po.origin == "orrfin"
     assert po.grand_total >= Decimal("157000.00")
     assert client.get(f"/requests/{request_id}").json()["status"] == "po_open"

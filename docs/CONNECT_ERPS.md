@@ -135,3 +135,25 @@ vendor order no. starts with ORF-). Release a draft PO and Sync: the request bec
 ## Microsoft Dynamics 365 Finance & Operations (Simulated)
 
 No free system exists. It runs on fixtures shaped like F&O's OData data entities; **Use simulated** on its card to try it.
+
+---
+
+## SAP S/4HANA Cloud (Sandbox reads, simulated write-back)
+
+**Create the account**
+1. Go to **api.sap.com** → **Log On** → create a free SAP account.
+2. Click your name (top right) → **Settings** → **Show API Key** → copy it.
+
+**Connect**
+3. Orrfin → Connectors → **SAP S/4HANA Cloud** → paste the **API key** → **Save keys → Test connection → Make active**
+   → POs → **Sync from ERP**.
+
+**What you will see:** SAP's own **sample** suppliers, purchase orders and goods receipts (not Orrfin's demo data), so
+the demo invoices won't match them. SAP's sandbox is read-only, so draft supplier invoices (parked) and purchase
+requisitions (SAP's APIs have no draft PO) go to Orrfin's **simulated** SAP, and the page says "write simulated".
+For the full demo flow with matching invoices, use **Use simulated** on the same card.
+
+## SAP Business One (Simulated)
+
+Needs a partner demo licence, so it runs on fixtures in the Service Layer's format. **Use simulated** on its card.
+Drafts are B1 *Drafts* (A/P invoice and purchase order) that a person adds in B1.

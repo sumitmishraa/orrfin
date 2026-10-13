@@ -177,6 +177,54 @@ def _fo_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
                                      erp_name="Dynamics 365 F&O (simulated)"))
 
 
+# --- SAP: S/4HANA (sandbox read + simulated write) + Business One (Step 18) ---------------------------
+
+SAP_SIM_BASE = "https://orrfin-demo.s4hana.simulated"
+
+
+def _sap_writes(state: Path) -> ErpHttp:
+    import httpx
+
+    from app.adapters.sap_s4_sim import FakeSapS4
+    from app.adapters.sim_store import SimStore
+
+    return ErpHttp(base_url=SAP_SIM_BASE, erp_name="SAP S/4HANA (simulated write-back)",
+                   transport=httpx.MockTransport(FakeSapS4(SimStore(state), with_reads=False)))
+
+
+def _sap_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
+    import httpx
+
+    from app.adapters.sap_s4 import SapS4Adapter
+    from app.adapters.sap_s4_sim import FakeSapS4
+    from app.adapters.sim_store import SimStore
+
+    http = ErpHttp(base_url=SAP_SIM_BASE, transport=httpx.MockTransport(FakeSapS4(SimStore(state))),
+                   erp_name="SAP S/4HANA (simulated)")
+    return SapS4Adapter(http, http, label="simulated")
+
+
+def _sap_sandbox(connection: "ErpConnection", values: dict[str, str]) -> ErpAdapter:
+    from app.adapters.sap_s4 import SANDBOX_HOST, SapS4Adapter
+
+    key = values["api_key"].strip()
+    read = ErpHttp(base_url=SANDBOX_HOST, headers={"APIKey": key, "Accept": "application/json"}, secrets=(key,),
+                   erp_name="SAP API sandbox")
+    return SapS4Adapter(read, _sap_writes(sim_state_path(connection)), label="sandbox", top=100)
+
+
+def _sap_b1_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
+    import httpx
+
+    from app.adapters.sap_b1 import SapB1Adapter
+    from app.adapters.sap_b1_sim import FakeSapB1
+    from app.adapters.sim_store import SimStore
+
+    http = ErpHttp(base_url="https://orrfin-demo.b1.simulated/b1s/v1",
+                   transport=httpx.MockTransport(FakeSapB1(SimStore(state))), erp_name="SAP Business One (simulated)")
+    return SapB1Adapter(http, company_db="SBODEMOIN", user="manager", password="simulated")
+
+
 CATALOGUE: dict[str, ConnectorSpec] = {
     "erpnext": ConnectorSpec(
         system="erpnext", name="ERPNext", segment="Indian SMB and mid-market", live_label="live", step=13, built=True,
@@ -234,10 +282,15 @@ CATALOGUE: dict[str, ConnectorSpec] = {
         simulated=_fo_simulated),
     "sap_s4": ConnectorSpec(
         system="sap_s4", name="SAP S/4HANA Cloud", segment="Large enterprise", live_label="sandbox", step=18,
-        built=False, signup="https://api.sap.com (free account → Show API Key)"),
+        built=True, signup="https://api.sap.com (free account → Show API Key)",
+        fields=(CredentialField("api_key", "API key", secret=True,
+                                help="api.sap.com → log on → your name → Settings → Show API Key"),),
+        host_policy=HostPolicy(patterns=("sandbox.api.sap.com",)),
+        simulated=_sap_simulated, live=_sap_sandbox,
+        note="Sandbox = SAP's own read-only sample data; write-back is simulated."),
     "sap_b1": ConnectorSpec(
-        system="sap_b1", name="SAP Business One", segment="Mid-market", live_label="simulated", step=18, built=False,
-        signup="Partner demo licence only"),
+        system="sap_b1", name="SAP Business One", segment="Mid-market", live_label="simulated", step=18, built=True,
+        signup="Partner demo licence only", simulated=_sap_b1_simulated),
     "oracle_fusion": ConnectorSpec(
         system="oracle_fusion", name="Oracle Fusion Cloud ERP", segment="Large enterprise", live_label="simulated",
         step=19, built=False, signup="Customer pod only"),

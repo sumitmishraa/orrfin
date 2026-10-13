@@ -87,6 +87,37 @@ def fo_simulated() -> ErpAdapter:
                                      transport=httpx.MockTransport(FakeDynamicsFo(SimStore(None))), erp_name="F&O"))
 
 
+def sap_s4_simulated() -> ErpAdapter:
+    from app.adapters.sap_s4 import SapS4Adapter
+    from app.adapters.sap_s4_sim import FakeSapS4
+
+    http = ErpHttp(base_url="https://sap.test", transport=httpx.MockTransport(FakeSapS4(SimStore(None))),
+                   erp_name="SAP S/4HANA")
+    return SapS4Adapter(http, http, label="simulated")
+
+
+def sap_s4_sandbox() -> ErpAdapter:
+    """Sandbox mode: reads need the APIKey header; writes land in a separate simulated store."""
+    from app.adapters.sap_s4 import SapS4Adapter
+    from app.adapters.sap_s4_sim import FakeSapS4
+
+    read = ErpHttp(base_url="https://sandbox.sap.test", headers={"APIKey": "sap-key-123456"},
+                   transport=httpx.MockTransport(FakeSapS4(SimStore(None), api_key="sap-key-123456")),
+                   erp_name="SAP API sandbox")
+    write = ErpHttp(base_url="https://writes.sap.test",
+                    transport=httpx.MockTransport(FakeSapS4(SimStore(None), with_reads=False)), erp_name="SAP writes")
+    return SapS4Adapter(read, write, label="sandbox", top=100)
+
+
+def sap_b1_simulated() -> ErpAdapter:
+    from app.adapters.sap_b1 import SapB1Adapter
+    from app.adapters.sap_b1_sim import FakeSapB1
+
+    http = ErpHttp(base_url="https://b1.test/b1s/v1", transport=httpx.MockTransport(FakeSapB1(SimStore(None))),
+                   erp_name="SAP Business One")
+    return SapB1Adapter(http, company_db="SBODEMOIN", user="manager", password="x")
+
+
 def busy_simulated() -> ErpAdapter:
     return BusyAdapter(SimStore(None), Path(tempfile.mkdtemp(prefix="orrfin-busy-")))
 
@@ -100,6 +131,9 @@ ADAPTERS: dict[str, Callable[[], ErpAdapter]] = {
     "bc-simulated": bc_simulated,
     "bc-seeded": bc_seeded,
     "fo-simulated": fo_simulated,
+    "sap-s4-simulated": sap_s4_simulated,
+    "sap-s4-sandbox": sap_s4_sandbox,
+    "sap-b1-simulated": sap_b1_simulated,
 }
 
 

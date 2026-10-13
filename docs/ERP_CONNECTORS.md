@@ -119,7 +119,12 @@ What changes per ERP is what "draft" means and which field the lookup uses.
   - The trial needs a **work email**: Gmail, Outlook.com and Hotmail are refused. Use name@orrfin.ai, or start a Microsoft 365 trial first.
   - Register an app in Microsoft Entra, give it the "Dynamics 365 Business Central" API permission, and add the app in BC ("Microsoft Entra Applications").
   - The trial lasts 30 days, so start it close to the pitch.
-- **SAP sandbox.**
+- **SAP S/4HANA** *(checked in Step 18, 13 Oct; mostly third-party sources, verify on api.sap.com before a pilot)*.
+  - Sandbox base `https://sandbox.api.sap.com/s4hanacloud`, key from api.sap.com → Settings → Show API Key; read-only sample data.
+  - API_PURCHASEORDER_PROCESS_SRV (V2) is deprecated in favour of a V4 PO API; draft POs aren't supported through the released APIs (→ purchase requisition, as planned). Large result sets are capped (1000).
+  - A_MaterialDocumentItem has no dates: read A_MaterialDocumentHeader with $expand (as the adapter does).
+  - Parking a supplier invoice via API and the `APIKey` header name: unverified (Test connection reports a refusal).
+- **SAP sandbox (planning notes).**
   - The API key goes in the `APIKey` header.
   - The data is SAP's sample data, not ours. Orrfin maps whatever POs exist there.
   - Writes are blocked by design.

@@ -150,7 +150,74 @@ def _fo_confirm(adapter, number: str) -> None:
             adapter.server.data.put("PurchaseOrderHeadersV2", {**header, "DocumentApprovalStatus": "Confirmed"})
 
 
+def _sap_build(wrap: Wrap) -> ErpAdapter:
+    from app.adapters.sap_s4 import SapS4Adapter
+    from app.adapters.sap_s4_sim import FakeSapS4
+
+    server = FakeSapS4(SimStore(None))
+    http = ErpHttp(base_url="https://sap.test", transport=wrap(httpx.MockTransport(server)), erp_name="SAP (simulated)")
+    adapter = SapS4Adapter(http, http, label="simulated")
+    adapter.server = server
+    return adapter
+
+
+def _sap_count(adapter) -> dict[str, int]:
+    return {"bills": len(adapter.server.data.all("A_SupplierInvoice")),
+            "pos": len(adapter.server.data.all("A_PurchaseRequisitionHeader"))}
+
+
+def _b1_build(wrap: Wrap) -> ErpAdapter:
+    from app.adapters.sap_b1 import SapB1Adapter
+    from app.adapters.sap_b1_sim import FakeSapB1
+
+    server = FakeSapB1(SimStore(None))
+    http = ErpHttp(base_url="https://b1.test/b1s/v1", transport=wrap(httpx.MockTransport(server)),
+                   erp_name="SAP B1 (simulated)")
+    adapter = SapB1Adapter(http, company_db="SBODEMOIN", user="manager", password="x")
+    adapter.server = server
+    return adapter
+
+
+def _b1_count(adapter) -> dict[str, int]:
+    drafts = adapter.server.data.all("Drafts")
+    return {"bills": sum(d["DocObjectCode"] == "oPurchaseInvoices" for d in drafts),
+            "pos": sum(d["DocObjectCode"] == "oPurchaseOrders" for d in drafts)}
+
+
+def _b1_add_from_draft(adapter, name: str) -> None:
+    """What a person does in B1: open the draft and Add it as a real purchase order."""
+    from decimal import Decimal
+
+    entry = int(name.split()[-1])
+    draft = next(d for d in adapter.server.data.all("Drafts") if d["DocEntry"] == entry)
+    lines = []
+    for i, line in enumerate(draft["DocumentLines"]):
+        qty, price = Decimal(str(line["Quantity"])), Decimal(str(line["UnitPrice"]))
+        lines.append({**line, "LineNum": i, "Quantity": str(qty), "UnitPrice": str(price),
+                      "LineTotal": str(qty * price), "TaxCode": "GST18"})
+    net = sum((Decimal(line["LineTotal"]) for line in lines), Decimal("0"))
+    vat = (net * Decimal("0.18")).quantize(Decimal("0.01"))
+    doc_entry = 100 + entry
+    adapter.server.data.put("PurchaseOrders", {
+        "_id": str(doc_entry), "DocEntry": doc_entry, "DocNum": 1000 + doc_entry, "CardCode": draft["CardCode"],
+        "DocDate": draft["DocDate"], "DocDueDate": draft["DocDueDate"], "DocumentStatus": "bost_Open",
+        "DocTotal": str(net + vat), "VatSum": str(vat), "NumAtCard": None, "Comments": draft["Comments"],
+        "UpdateDate": "2026-10-13", "UpdateTime": "10:00:00", "DocumentLines": lines})
+
+
+def _sap_post(entity: str) -> Callable[[httpx.Request], bool]:
+    return lambda r: r.method == "POST" and r.url.path.endswith(f"/{entity}")
+
+
+def _b1_draft(kind: str) -> Callable[[httpx.Request], bool]:
+    return lambda r: r.method == "POST" and r.url.path.endswith("/Drafts") and kind.encode() in r.content
+
+
 CASES: dict[str, WriteCase] = {
+    "sap_s4": WriteCase("sap_s4", _sap_build, _sap_count, _sap_post("A_SupplierInvoice"),
+                        _sap_post("A_PurchaseRequisitionHeader")),
+    "sap_b1": WriteCase("sap_b1", _b1_build, _b1_count, _b1_draft("oPurchaseInvoices"), _b1_draft("oPurchaseOrders"),
+                        submit_po=_b1_add_from_draft),
     "dynamics_fo": WriteCase("dynamics_fo", _fo_build, _fo_count, _ends("/VendorInvoiceHeaders"),
                              _ends("/PurchaseOrderHeadersV2"), submit_po=_fo_confirm, multi_call_write=True),
     "business_central": WriteCase("business_central", _bc_build, _bc_count, _ends("/purchaseInvoices"),
