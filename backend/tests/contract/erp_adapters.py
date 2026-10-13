@@ -134,6 +134,53 @@ def netsuite_simulated() -> ErpAdapter:
                                    transport=httpx.MockTransport(FakeNetSuite(SimStore(None)))))
 
 
+def _zoho(server, label: str, refresh: str):
+    from app.adapters.zoho_books import ACCOUNTS_HOST, API_BASE, ZohoBooksAdapter
+    from app.adapters.zoho_books_sim import ORG_ID
+
+    transport = httpx.MockTransport(server)
+    return ZohoBooksAdapter(ErpHttp(base_url=API_BASE, transport=transport, erp_name="Zoho Books"),
+                            ErpHttp(base_url=ACCOUNTS_HOST, transport=transport, erp_name="Zoho Accounts"),
+                            client_id="c1", client_secret="zoho-secret-1234", refresh_token=refresh,
+                            organization_id=ORG_ID, label=label, bill_drafts_checked=label != "live")
+
+
+def zoho_simulated() -> ErpAdapter:
+    from app.adapters.zoho_books_sim import REFRESH, FakeZohoBooks
+
+    return _zoho(FakeZohoBooks(SimStore(None)), "simulated", REFRESH)
+
+
+def zoho_seeded() -> ErpAdapter:
+    from app.adapters.zoho_books_sim import REFRESH, FakeZohoBooks
+
+    adapter = _zoho(FakeZohoBooks(SimStore(None), empty=True, client_secret="zoho-secret-1234"), "live", REFRESH)
+    adapter.seed_demo_data()
+    adapter.contract_gaps = {"receipts", "tax"}  # see zoho_books.py docstring
+    return adapter
+
+
+def _odoo(server, label: str):
+    from app.adapters.odoo import OdooAdapter
+
+    return OdooAdapter(ErpHttp(base_url="http://localhost:8069", headers={"Authorization": "bearer odoo-key-123456"},
+                               transport=httpx.MockTransport(server), erp_name="Odoo"), label=label)
+
+
+def odoo_simulated() -> ErpAdapter:
+    from app.adapters.odoo_sim import FakeOdoo
+
+    return _odoo(FakeOdoo(SimStore(None)), "simulated")
+
+
+def odoo_seeded() -> ErpAdapter:
+    from app.adapters.odoo_sim import FakeOdoo
+
+    adapter = _odoo(FakeOdoo(SimStore(None), empty=True, api_key="odoo-key-123456"), "live")
+    adapter.seed_demo_data()
+    return adapter
+
+
 def busy_simulated() -> ErpAdapter:
     return BusyAdapter(SimStore(None), Path(tempfile.mkdtemp(prefix="orrfin-busy-")))
 
@@ -152,6 +199,10 @@ ADAPTERS: dict[str, Callable[[], ErpAdapter]] = {
     "sap-b1-simulated": sap_b1_simulated,
     "oracle-simulated": oracle_simulated,
     "netsuite-simulated": netsuite_simulated,
+    "zoho-simulated": zoho_simulated,
+    "zoho-seeded": zoho_seeded,
+    "odoo-simulated": odoo_simulated,
+    "odoo-seeded": odoo_seeded,
 }
 
 

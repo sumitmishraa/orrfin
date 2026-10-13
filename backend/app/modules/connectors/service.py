@@ -117,6 +117,12 @@ def save_credentials(db: Session, org_id: uuid.UUID, system: str, values: dict[s
             merged["url"] = check_base_url(merged["url"], spec.host_policy)
         except UrlNotAllowed as exc:
             raise Invalid(str(exc)) from None
+    if spec.finish_setup is not None:
+        # e.g. Zoho: trade the one-time code for a refresh token now, so the code is never stored.
+        try:
+            merged = spec.finish_setup(merged)
+        except (ErpError, LookupError) as exc:
+            raise Invalid(redact(str(exc), secret_values(spec, merged))) from None
     try:
         row.credentials_encrypted = encrypt_credentials(merged)
     except SecretsUnavailable as exc:

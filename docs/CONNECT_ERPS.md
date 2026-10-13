@@ -165,3 +165,49 @@ Drafts are B1 *Drafts* (A/P invoice and purchase order) that a person adds in B1
 Neither has a free test system, so both run on fixtures shaped like their published REST APIs. **Use simulated** on
 their cards to try them. NetSuite shows a stronger safety net: Orrfin upserts drafts by **external ID**, NetSuite's own
 idempotency, so even a lost reply can't create a second bill.
+
+---
+
+## Zoho Books (Live, free plan)
+
+**Create the account**
+1. Go to **zoho.com/in/books** → **Sign up free** → country **India** → create organisation **Orrfin Demo Pvt Ltd**
+   (GST registered). Note the **Organisation ID**: Settings → Organisation Profile.
+
+**Give Orrfin access** (a "Self Client": no website or redirect needed)
+2. Go to **api-console.zoho.in** → **Add Client** → **Self Client** → **Create**.
+3. **Client Secret** tab → copy the **Client ID** and **Client Secret**.
+4. **Generate Code** tab → Scope (copy exactly):
+   `ZohoBooks.contacts.ALL,ZohoBooks.settings.ALL,ZohoBooks.purchaseorders.ALL,ZohoBooks.bills.ALL`
+   → time duration **10 minutes** → description "Orrfin" → **Create** → copy the code. It works **once**, within minutes.
+
+**Connect** (right after step 4)
+5. Orrfin → Connectors → **Zoho Books** → paste **Client ID**, **Client secret**, **One-time code**, **Organisation ID**.
+   Leave **Refresh token** blank (Orrfin fills it in) and **Draft bills checked?** as `no` → **Save keys**.
+   Orrfin swaps the code for a long-lived refresh token, stored encrypted; the code is not kept.
+6. **Test connection → Prepare demo data → Make active** → POs → **Sync from ERP**.
+
+**Draft bills (one-time check):** Zoho's docs don't say for sure that a bill created through the API is a *Draft*.
+Orrfin only ever creates drafts, so bills to live Zoho stay **off** until you check: set **Draft bills checked?** to
+`yes`, save, approve one demo invoice in Orrfin, and look in Zoho Books → **Purchases → Bills**. If it shows **Draft**,
+keep `yes`. If it shows **Open**, set it back to `no`, delete that bill in Zoho, and tell Claude. Draft **POs** work now
+(Purchases → Purchase Orders → status Draft).
+
+**Also:** receive the demo POs in Zoho (Purchase Order → **Receive**) to try the 3-way match; GST comes from Zoho's
+own tax setup.
+
+---
+
+## Odoo (Live, on this computer in Docker)
+
+Nothing to sign up for.
+1. Make sure Docker Desktop is running, then in PowerShell: `.\scripts\odoo_setup.ps1`
+   (first run downloads Odoo, about 1 GB). It creates the database and prints an **API key** once.
+2. Orrfin → Connectors → **Odoo** → paste the **API key** (leave address and database blank) →
+   **Save keys → Test connection → Prepare demo data → Make active** → POs → **Sync from ERP**.
+3. Next time, start Odoo with Orrfin: `.\scripts\dev.ps1 -Odoo`. Stop it: `.\scripts\odoo_setup.ps1 -Stop`.
+4. Something half-done or messy? `.\scripts\odoo_setup.ps1 -Reset` deletes the Odoo demo database and builds it
+   again with a new API key: paste the new key into Orrfin and press **Prepare demo data** again.
+
+**Where drafts appear:** Odoo (http://localhost:8069, login admin / admin) → **Accounting → Vendors → Bills** (Draft)
+and **Purchase → Requests for Quotation**. Confirm an RFQ, then Sync: the request becomes "PO open".

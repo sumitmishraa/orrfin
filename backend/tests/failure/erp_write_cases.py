@@ -269,7 +269,68 @@ def _put(path_part: str) -> Callable[[httpx.Request], bool]:
     return lambda r: r.method == "PUT" and path_part in r.url.path
 
 
+def _zoho_build(wrap: Wrap) -> ErpAdapter:
+    from app.adapters.zoho_books import ACCOUNTS_HOST, API_BASE, ZohoBooksAdapter
+    from app.adapters.zoho_books_sim import ORG_ID, REFRESH, FakeZohoBooks
+
+    server = FakeZohoBooks(SimStore(None))
+    transport = wrap(httpx.MockTransport(server))
+    adapter = ZohoBooksAdapter(ErpHttp(base_url=API_BASE, transport=transport, erp_name="Zoho Books (simulated)"),
+                               ErpHttp(base_url=ACCOUNTS_HOST, transport=transport, erp_name="Zoho Accounts"),
+                               client_id="c", client_secret="s", refresh_token=REFRESH, organization_id=ORG_ID,
+                               label="simulated", bill_drafts_checked=True)
+    adapter.server = server
+    return adapter
+
+
+def _zoho_count(adapter) -> dict[str, int]:
+    pos = adapter.server.data["purchaseorders"].all("purchaseorders")
+    return {"bills": len(adapter.server.data["bills"].all("bills")),
+            "pos": sum(str(p.get("reference_number") or "").startswith("ORF-") for p in pos)}
+
+
+def _zoho_open(adapter, number: str) -> None:
+    """What a person does in Zoho Books: mark the draft purchase order as open (issued)."""
+    store = adapter.server.data["purchaseorders"]
+    po = next(p for p in store.all("purchaseorders") if p["purchaseorder_number"] == number)
+    store.put("purchaseorders", {**po, "status": "open", "last_modified_time": "2026-10-13T10:00:00+05:30"})
+
+
+def _odoo_build(wrap: Wrap) -> ErpAdapter:
+    from app.adapters.odoo import OdooAdapter
+    from app.adapters.odoo_sim import FakeOdoo
+
+    server = FakeOdoo(SimStore(None))
+    adapter = OdooAdapter(ErpHttp(base_url="http://localhost:8069", transport=wrap(httpx.MockTransport(server)),
+                                  erp_name="Odoo (simulated)"), label="simulated")
+    adapter.server = server
+    return adapter
+
+
+def _odoo_count(adapter) -> dict[str, int]:
+    models = adapter.server.store.load().get("models", {})
+    return {"bills": sum(1 for m in models.get("account.move", {}).values() if m.get("move_type") == "in_invoice"),
+            "pos": sum(1 for p in models.get("purchase.order", {}).values()
+                       if str(p.get("origin") or "").startswith("orrfin:"))}
+
+
+def _odoo_confirm(adapter, name: str) -> None:
+    """What a person does in Odoo: confirm the RFQ, which makes it a purchase order."""
+    po = adapter.call("purchase.order", "search_read", domain=[["name", "=", name]], fields=["id"])[0]
+    adapter.call("purchase.order", "button_confirm", ids=[po["id"]])
+
+
+def _json2(model: str, needle: bytes = b"") -> Callable[[httpx.Request], bool]:
+    return lambda r: r.method == "POST" and r.url.path == f"/json/2/{model}/create" and needle in r.content
+
+
 CASES: dict[str, WriteCase] = {
+    "zoho_books": WriteCase("zoho_books", _zoho_build, _zoho_count,
+                            lambda r: r.method == "POST" and r.url.path.endswith("/books/v3/bills"),
+                            lambda r: r.method == "POST" and r.url.path.endswith("/books/v3/purchaseorders"),
+                            submit_po=_zoho_open),
+    "odoo": WriteCase("odoo", _odoo_build, _odoo_count, _json2("account.move"), _json2("purchase.order", b"orrfin:"),
+                      submit_po=_odoo_confirm),
     "oracle_fusion": WriteCase("oracle_fusion", _oracle_build, _oracle_count, _sap_post("invoices"),
                                _sap_post("draftPurchaseOrders"), submit_po=_oracle_submit),
     "netsuite": WriteCase("netsuite", _netsuite_build, _netsuite_count, _put("/vendorBill/eid:"),

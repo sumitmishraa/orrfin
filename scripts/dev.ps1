@@ -12,7 +12,7 @@
   .\scripts\dev.ps1 -Stop    # stop everything
   .\scripts\dev.ps1 -WebPort 3001   # if another app already uses port 3000
 #>
-param([switch]$Stop, [int]$WebPort = 3000)
+param([switch]$Stop, [switch]$Odoo, [int]$WebPort = 3000)
 
 $ErrorActionPreference = 'Stop'
 $Root     = Split-Path -Parent $PSScriptRoot
@@ -142,6 +142,11 @@ Start-DockerEngine
 
 Write-Host 'Starting Postgres...'
 Invoke-Compose @('up', '-d', '--wait')
+if ($Odoo) {
+    # Odoo for the live Odoo connector (Step 20); first run: scripts\odoo_setup.ps1 creates the database and API key.
+    Write-Host 'Starting Odoo on http://localhost:8069 ...'
+    Invoke-Compose @('--profile', 'odoo', 'up', '-d')
+}
 
 if (-not (Test-Path $VenvPy)) {
     Write-Host 'First run: creating the Python environment (a few minutes)...'

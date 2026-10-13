@@ -22,5 +22,40 @@ services:
       timeout: 3s
       retries: 30
 
+  # --- Odoo 19 Community for the live Odoo connector (PROMPTS Step 20). Starts only when asked:
+  #     docker compose --profile odoo up -d   (scripts/odoo_setup.ps1 or dev.ps1 -Odoo do this for you)
+  odoo-db:
+    image: postgres:16
+    profiles: ["odoo"]
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: ${ODOO_DB_PASSWORD:-odoo-local-only}
+    volumes:
+      - odoo-dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  odoo:
+    image: odoo:19
+    profiles: ["odoo"]
+    depends_on:
+      odoo-db:
+        condition: service_healthy
+    environment:
+      HOST: odoo-db
+      USER: odoo
+      PASSWORD: ${ODOO_DB_PASSWORD:-odoo-local-only}
+    ports:
+      # Localhost only: the demo Odoo is never reachable from the network.
+      - "127.0.0.1:8069:8069"
+    volumes:
+      - odoo-data:/var/lib/odoo
+
 volumes:
   pgdata:
+  odoo-dbdata:
+  odoo-data:

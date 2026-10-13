@@ -48,6 +48,8 @@ class ConnectorSpec:
     simulated: Callable[["ErpConnection", Path], ErpAdapter] | None = None
     live: Callable[["ErpConnection", dict[str, str]], ErpAdapter] | None = None
     note: str = ""
+    # Runs once at Save keys, e.g. Zoho: trade a one-time code for a refresh token (network call).
+    finish_setup: Callable[[dict[str, str]], dict[str, str]] | None = None
     file_based: bool = False  # drafts are import files a person loads (BUSY), downloadable from Orrfin
 
     @property
@@ -251,6 +253,80 @@ def _netsuite_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
                                    erp_name="NetSuite (simulated)"))
 
 
+# --- Zoho Books + Odoo (Step 20, both live) ---------------------------------------------------------------
+
+ODOO_LOCAL_URL = "http://localhost:8069"
+
+
+def _zoho_adapter(values: dict[str, str], transport, label: Label, secrets: tuple[str, ...]) -> ErpAdapter:
+    from app.adapters.zoho_books import ACCOUNTS_HOST, API_BASE, ZohoBooksAdapter
+
+    api = ErpHttp(base_url=API_BASE, transport=transport, secrets=secrets,
+                  erp_name="Zoho Books" + (" (simulated)" if label == "simulated" else ""))
+    accounts = ErpHttp(base_url=ACCOUNTS_HOST, transport=transport, secrets=secrets, erp_name="Zoho Accounts")
+    return ZohoBooksAdapter(api, accounts, client_id=values["client_id"].strip(),
+                            client_secret=values["client_secret"].strip(), refresh_token=values["refresh_token"].strip(),
+                            organization_id=values["organization_id"].strip(), label=label,
+                            bill_drafts_checked=_yes(values.get("draft_bills_checked"), default=False))
+
+
+def _zoho_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
+    import httpx
+
+    from app.adapters.sim_store import SimStore
+    from app.adapters.zoho_books_sim import ORG_ID, REFRESH, FakeZohoBooks
+
+    return _zoho_adapter({"client_id": "simulated", "client_secret": "simulated", "refresh_token": REFRESH,
+                          "organization_id": ORG_ID}, httpx.MockTransport(FakeZohoBooks(SimStore(state))),
+                         "simulated", ())
+
+
+def _zoho_live(connection: "ErpConnection", values: dict[str, str]) -> ErpAdapter:
+    if not (values.get("refresh_token") or "").strip():
+        raise LookupError("Zoho Books: paste a fresh one-time code and Save keys again.")
+    return _zoho_adapter(values, None, "live", secret_values(CATALOGUE["zoho_books"], values))
+
+
+def _zoho_finish_setup(values: dict[str, str], transport=None) -> dict[str, str]:
+    """At Save keys: trade a fresh one-time Self Client code for the refresh token, then forget the code."""
+    from app.adapters.zoho_books import ACCOUNTS_HOST, exchange_grant_code
+
+    code = (values.get("grant_code") or "").strip()
+    if not code:
+        if not values.get("refresh_token"):
+            raise LookupError("Paste the one-time code from Zoho's Self Client (Generate Code).")
+        return values
+    accounts = ErpHttp(base_url=ACCOUNTS_HOST, transport=transport, erp_name="Zoho Accounts",
+                       secrets=tuple(v for k, v in values.items() if k in ("client_secret", "grant_code") and v))
+    token = exchange_grant_code(accounts, values["client_id"].strip(), values["client_secret"].strip(), code)
+    return {**values, "refresh_token": token, "grant_code": ""}
+
+
+def _odoo_adapter(values: dict[str, str], transport, label: Label, secrets: tuple[str, ...]) -> ErpAdapter:
+    from app.adapters.odoo import OdooAdapter
+
+    base = values.get("url") or ODOO_LOCAL_URL
+    if label == "live":
+        base = check_base_url(base, CATALOGUE["odoo"].host_policy)
+    headers = {"Authorization": f"bearer {values['api_key'].strip()}",
+               "X-Odoo-Database": (values.get("database") or "orrfin").strip()}
+    return OdooAdapter(ErpHttp(base_url=base, headers=headers, transport=transport, secrets=secrets,
+                               erp_name="Odoo" + (" (simulated)" if label == "simulated" else "")), label=label)
+
+
+def _odoo_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
+    import httpx
+
+    from app.adapters.odoo_sim import FakeOdoo
+    from app.adapters.sim_store import SimStore
+
+    return _odoo_adapter({"api_key": "simulated"}, httpx.MockTransport(FakeOdoo(SimStore(state))), "simulated", ())
+
+
+def _odoo_live(connection: "ErpConnection", values: dict[str, str]) -> ErpAdapter:
+    return _odoo_adapter(values, None, "live", secret_values(CATALOGUE["odoo"], values))
+
+
 CATALOGUE: dict[str, ConnectorSpec] = {
     "erpnext": ConnectorSpec(
         system="erpnext", name="ERPNext", segment="Indian SMB and mid-market", live_label="live", step=13, built=True,
@@ -325,11 +401,35 @@ CATALOGUE: dict[str, ConnectorSpec] = {
         live_label="simulated", step=19, built=True, signup="Customer sandbox only", simulated=_netsuite_simulated,
         note="Uses NetSuite's own idempotency: drafts are upserted by external ID."),
     "zoho_books": ConnectorSpec(
-        system="zoho_books", name="Zoho Books", segment="Indian SMB", live_label="live", step=20, built=False,
-        signup="https://www.zoho.com/in/books (free plan)"),
+        system="zoho_books", name="Zoho Books", segment="Indian SMB", live_label="live", step=20, built=True,
+        signup="https://www.zoho.com/in/books (free plan)",
+        fields=(
+            CredentialField("client_id", "Client ID", help="api-console.zoho.in → Self Client → Client Secret tab"),
+            CredentialField("client_secret", "Client secret", secret=True, help="Same tab as the Client ID"),
+            CredentialField("grant_code", "One-time code", secret=True, required=False,
+                            help="Self Client → Generate Code (scope in docs/CONNECT_ERPS.md); paste within 3 minutes"),
+            CredentialField("organization_id", "Organisation ID",
+                            help="Zoho Books → Settings → Organisation Profile → Organisation ID"),
+            CredentialField("refresh_token", "Refresh token", secret=True, required=False,
+                            help="Filled in by Orrfin from the one-time code; leave blank"),
+            CredentialField("draft_bills_checked", "Draft bills checked?", required=False, placeholder="no",
+                            help="yes only after you saw an Orrfin bill arrive as Draft in Zoho (see the guide)"),
+        ),
+        host_policy=HostPolicy(patterns=("www.zohoapis.in", "accounts.zoho.in")),
+        simulated=_zoho_simulated, live=_zoho_live, finish_setup=_zoho_finish_setup),
     "odoo": ConnectorSpec(
-        system="odoo", name="Odoo", segment="SMB and mid-market", live_label="live", step=20, built=False,
-        signup="Nothing to sign up: Odoo runs in Docker on this laptop"),
+        system="odoo", name="Odoo", segment="SMB and mid-market", live_label="live", step=20, built=True,
+        signup="Nothing to sign up: Odoo runs in Docker on this laptop (scripts/odoo_setup.ps1)",
+        fields=(
+            CredentialField("url", "Odoo address", required=False, placeholder=ODOO_LOCAL_URL,
+                            help="Leave blank for http://localhost:8069 (Odoo in Docker on this computer)"),
+            CredentialField("database", "Database", required=False, placeholder="orrfin",
+                            help="Blank = orrfin (what odoo_setup.ps1 creates)"),
+            CredentialField("api_key", "API key", secret=True,
+                            help="Printed by scripts/odoo_setup.ps1, or Odoo → My Profile → Account Security → New API Key"),
+        ),
+        host_policy=HostPolicy(allow_local_http=True, allow_any_public_https=True),
+        simulated=_odoo_simulated, live=_odoo_live),
 }
 
 DEFAULT_SYSTEM = "erpnext"

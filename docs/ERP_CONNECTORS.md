@@ -129,6 +129,8 @@ What changes per ERP is what "draft" means and which field the lookup uses.
   - The data is SAP's sample data, not ours. Orrfin maps whatever POs exist there.
   - Writes are blocked by design.
   - API_PURCHASEORDER_PROCESS_SRV (V2) is deprecated in favour of an OData V4 PO API. Check on api.sap.com that the chosen API still has a sandbox.
+- **Zoho Books** *(checked in Step 20, 13 Oct; community sources)*: India uses accounts.zoho.in / www.zohoapis.in; header `Zoho-oauthtoken`; every call needs organization_id; refresh tokens need access_type=offline (Self Client codes are exchanged once). Bill create payload = vendor_id, bill_number, date, line_items. **Unverified:** whether an API-created bill is Draft (so live bills are off until the founder checks one), purchase receives on the Books API, `quantity_received` on PO lines.
+- **Odoo 19 (as built)**: JSON-2 `POST /json/2/<model>/<method>`, `Authorization: bearer <API key>`, `X-Odoo-Database`; RFQ = draft PO (origin "orrfin:<key>"), account.move in_invoice created in Draft; receipts validated with skip_backorder; services received via qty_received. **Checked live against Odoo 19.0 (13 Oct):** PO line taxes are `tax_ids` and the unit is `product_uom_id` (older: taxes_id / product_uom); a PO has no `done` state any more: closed = `locked` (button_lock).
 - **Odoo 19.** Use JSON-2 (`/json/2/...` with a Bearer API key). XML-RPC/JSON-RPC are deprecated: removal is announced for Odoo 22 (self-hosted) and 21.1 (Odoo Online).
 - **Zoho Books.**
   - India accounts use the `.in` domains (`accounts.zoho.in`, `www.zohoapis.in`).
