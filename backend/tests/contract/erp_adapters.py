@@ -54,6 +54,39 @@ def tally_seeded() -> ErpAdapter:
     return adapter
 
 
+def _bc(server, label: str):
+    from app.adapters.business_central import API_HOST, TOKEN_HOST, BusinessCentralAdapter
+
+    transport = httpx.MockTransport(server)
+    return BusinessCentralAdapter(
+        ErpHttp(base_url=f"{API_HOST}/v2.0/t1/Production/api/v2.0", transport=transport, erp_name="Business Central"),
+        ErpHttp(base_url=TOKEN_HOST, transport=transport, erp_name="Microsoft Entra"),
+        tenant="t1", client_id="c1", client_secret="bc-secret-123456", company_name=None, label=label)
+
+
+def bc_simulated() -> ErpAdapter:
+    from app.adapters.business_central_sim import FakeBusinessCentral
+
+    return _bc(FakeBusinessCentral(SimStore(None)), "simulated")
+
+
+def bc_seeded() -> ErpAdapter:
+    from app.adapters.business_central_sim import FakeBusinessCentral
+
+    adapter = _bc(FakeBusinessCentral(SimStore(None), empty=True, client_secret="bc-secret-123456"), "live")
+    adapter.seed_demo_data()
+    adapter.contract_gaps = {"closed_status", "receipts", "tax"}  # see business_central.py docstring
+    return adapter
+
+
+def fo_simulated() -> ErpAdapter:
+    from app.adapters.dynamics_fo import DynamicsFoAdapter
+    from app.adapters.dynamics_fo_sim import FakeDynamicsFo
+
+    return DynamicsFoAdapter(ErpHttp(base_url="https://orrfin-demo.operations.dynamics.com/data",
+                                     transport=httpx.MockTransport(FakeDynamicsFo(SimStore(None))), erp_name="F&O"))
+
+
 def busy_simulated() -> ErpAdapter:
     return BusyAdapter(SimStore(None), Path(tempfile.mkdtemp(prefix="orrfin-busy-")))
 
@@ -64,6 +97,9 @@ ADAPTERS: dict[str, Callable[[], ErpAdapter]] = {
     "tally-simulated": tally_simulated,
     "tally-seeded": tally_seeded,
     "busy-simulated": busy_simulated,
+    "bc-simulated": bc_simulated,
+    "bc-seeded": bc_seeded,
+    "fo-simulated": fo_simulated,
 }
 
 

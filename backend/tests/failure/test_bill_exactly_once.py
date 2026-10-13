@@ -64,8 +64,13 @@ def test_adapter_level_lookup_finds_a_bill_whose_reply_was_lost(case):
     bill = _draft_bill(adapter, "LOST-REPLY-1")
     with pytest.raises(ErpUnknown):
         adapter.create_draft_bill(bill)
-    assert adapter.find_bill(bill.vendor_ref, bill.supplier_invoice_no)
-    assert case.count(adapter)["bills"] == 1
+    if case.multi_call_write:
+        # Only the header was saved: the lookup removes the unfinished draft, so a retry writes it whole.
+        assert adapter.find_bill(bill.vendor_ref, bill.supplier_invoice_no) is None
+        assert case.count(adapter)["bills"] == 0
+    else:
+        assert adapter.find_bill(bill.vendor_ref, bill.supplier_invoice_no)
+        assert case.count(adapter)["bills"] == 1
 
 
 def test_saved_then_timed_out_ends_confirmed_with_exactly_one_bill(client, db, monkeypatch, people, case):
@@ -77,14 +82,19 @@ def test_saved_then_timed_out_ends_confirmed_with_exactly_one_bill(client, db, m
 
     row = _row(db, invoice_id)
     assert row.state == "CONFIRMED" and row.erp_doc_name
-    assert row.attempts == 1  # the retry found the bill by lookup; it never posted again
-    assert case.count(adapter)["bills"] == 1
+    assert case.count(adapter)["bills"] == 1  # exactly one draft in the ERP, whatever happened on the wire
     actions = [e.action for e in db.scalars(select(AuditEvent).where(AuditEvent.entity_id == row.id)
                                             .order_by(AuditEvent.seq))]
-    assert actions == ["erp_draft_queued", "erp_draft_sent", "erp_draft_unknown", "erp_draft_confirmed"]
     confirmed = db.scalar(select(AuditEvent).where(AuditEvent.entity_id == row.id,
                                                    AuditEvent.action == "erp_draft_confirmed"))
-    assert confirmed.payload["via"] == "lookup"
+    if case.multi_call_write:
+        assert row.attempts == 2  # lookup removed the half draft, then the retry wrote it whole
+        assert actions == ["erp_draft_queued", "erp_draft_sent", "erp_draft_unknown", "erp_draft_sent",
+                           "erp_draft_confirmed"]
+    else:
+        assert row.attempts == 1  # the retry found the bill by lookup; it never posted again
+        assert actions == ["erp_draft_queued", "erp_draft_sent", "erp_draft_unknown", "erp_draft_confirmed"]
+        assert confirmed.payload["via"] == "lookup"
 
     detail = client.get(f"/invoices/{invoice_id}").json()
     assert detail["erp_sync"]["state"] == "CONFIRMED" and detail["erp_sync"]["erp"]

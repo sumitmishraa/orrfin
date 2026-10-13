@@ -103,3 +103,35 @@ Nothing to sign up. BUSY has no API, so Orrfin's "draft" is an **XML import file
 the ERP draft panel shows **Download the import file**; load it with BUSY's voucher import. Make it active from its card
 (**Use simulated**) to try it.
 
+---
+
+## Microsoft Dynamics 365 Business Central (Live, 30-day trial)
+
+**Create the account** (needs a **work email** such as you@orrfin.ai; Gmail and Outlook.com are refused)
+1. Go to **dynamics.microsoft.com → Business Central → Try for free** → sign up with the work email → country **India**.
+
+**Give Orrfin its own app login** (client credentials; the secret never leaves the Connectors page)
+2. Go to **entra.microsoft.com → App registrations → New registration** → name **Orrfin** → **Register**.
+   Copy the **Application (client) ID** and the **Directory (tenant) ID** from the Overview page.
+3. **Certificates & secrets → New client secret** → copy the **Value** (shown once).
+4. **API permissions → Add a permission → Dynamics 365 Business Central → Application permissions →
+   API.ReadWrite.All → Add** → then **Grant admin consent**.
+5. In Business Central, search **Microsoft Entra Applications** → **New** → paste the client ID → State **Enabled** →
+   add the permission set **D365 BUS FULL ACCESS** → **Grant Consent** if asked.
+
+**Connect**
+6. Orrfin → Connectors → **Business Central** card → paste **Directory (tenant) ID**, **Application (client) ID**,
+   **Client secret value**; **Environment** blank (= Production) unless you named it; **Company name** only if there
+   are several.
+7. **Save keys → Test connection → Prepare demo data → Make active** → POs → **Sync from ERP**.
+
+**Two things Business Central's standard API can't do** (Prepare demo data tells you too):
+- **Receipts**: open each demo PO in Business Central → **Post → Receive**, then Sync, to try the 3-way match.
+- **GST**: tax amounts come from Business Central's own GST setup for the demo items.
+
+**Where drafts appear:** **Purchasing → Purchase Invoices** (unposted) and **Purchase Orders** (status Open, not released;
+vendor order no. starts with ORF-). Release a draft PO and Sync: the request becomes "PO open".
+
+## Microsoft Dynamics 365 Finance & Operations (Simulated)
+
+No free system exists. It runs on fixtures shaped like F&O's OData data entities; **Use simulated** on its card to try it.

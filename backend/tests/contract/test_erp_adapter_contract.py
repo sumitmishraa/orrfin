@@ -43,23 +43,35 @@ def test_vendors_match_the_canonical_set(adapter):
         assert vendor.modified.tzinfo is not None
 
 
+def _gaps(adapter) -> set[str]:
+    """What this ERP can't represent, declared by the adapter (e.g. Business Central has no 'closed' PO)."""
+    return set(getattr(adapter, "contract_gaps", set()))
+
+
 def test_purchase_orders_match_canonical_totals_in_decimal(adapter):
     pos = _po_by_number(adapter)
     vendors = {v.erp_ref: v for v in adapter.list_vendors()}
+    gaps = _gaps(adapter)
     for canon in DATA.purchase_orders:
         po = pos.get(canon.number)
         assert po is not None, f"{canon.number} missing"
         assert vendors[po.vendor_ref].gstin == canon.vendor.gstin
-        assert po.net_total == canon.net_total and po.grand_total == canon.grand_total
+        assert po.net_total == canon.net_total
         assert isinstance(po.grand_total, Decimal)
-        assert po.status == canon.status
+        if "tax" not in gaps:
+            assert po.grand_total == canon.grand_total
+        if "receipts" not in gaps and ("closed_status" not in gaps or canon.status != "closed"):
+            assert po.status == canon.status
         assert [(l.item_code, l.qty, l.rate, l.amount) for l in po.lines] == \
                [(l.item_code, l.qty, l.rate, l.amount) for l in canon.lines]
-        assert all(l.tax_rate == Decimal("18") for l in po.lines)
+        if "tax" not in gaps:
+            assert all(l.tax_rate == Decimal("18") for l in po.lines)
         assert all(isinstance(l.qty, Decimal) and isinstance(l.rate, Decimal) for l in po.lines)
 
 
 def test_receipts_point_at_po_lines_with_canonical_quantities(adapter):
+    if "receipts" in _gaps(adapter):
+        pytest.skip("this ERP's API can't create receipts; a person posts them (see CONNECT_ERPS.md)")
     pos = _po_by_number(adapter)
     line_owner = {line.erp_ref: (number, line.item_code) for number, po in pos.items() for line in po.lines}
     received: dict[tuple[str, str], Decimal] = {}

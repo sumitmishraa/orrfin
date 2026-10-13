@@ -37,6 +37,9 @@ class WriteCase:
     is_po_write: Callable[[httpx.Request], bool]
     # What a person does in the ERP to turn Orrfin's draft PO into a real one (Step 15 "submit it").
     submit_po: Callable[[ErpAdapter, str], None] | None = None
+    # Header + lines in separate calls (Business Central): a reply lost after the header leaves an unfinished
+    # draft, which the lookup removes; the retry then writes the whole draft (attempt 2), still exactly one.
+    multi_call_write: bool = False
 
 
 def _erpnext_build(wrap: Wrap) -> ErpAdapter:
@@ -91,7 +94,67 @@ def _tally_import(vch_type: str) -> Callable[[httpx.Request], bool]:
     return lambda r: b"Import Data" in r.content and f'VCHTYPE="{vch_type}"'.encode() in r.content
 
 
+def _bc_build(wrap: Wrap) -> ErpAdapter:
+    from app.adapters.business_central import API_HOST, TOKEN_HOST, BusinessCentralAdapter
+    from app.adapters.business_central_sim import FakeBusinessCentral
+
+    server = FakeBusinessCentral(SimStore(None))
+    transport = wrap(httpx.MockTransport(server))
+    adapter = BusinessCentralAdapter(
+        ErpHttp(base_url=f"{API_HOST}/v2.0/t1/Production/api/v2.0", transport=transport, erp_name="Business Central"),
+        ErpHttp(base_url=TOKEN_HOST, transport=transport, erp_name="Microsoft Entra"),
+        tenant="t1", client_id="c1", client_secret="s", company_name=None, label="simulated")
+    adapter.server = server
+    return adapter
+
+
+def _bc_count(adapter) -> dict[str, int]:
+    live = adapter.server._live
+    return {"bills": len(live("purchaseInvoices")),
+            "pos": sum(str(o.get("vendorOrderNumber") or "").startswith("ORF-") for o in live("purchaseOrders"))}
+
+
+def _bc_release(adapter, number: str) -> None:
+    """What a person does in Business Central: release the draft PO (API status Open)."""
+    for order in adapter.server._live("purchaseOrders"):
+        if order.get("number") == number:
+            adapter.server.data.put("purchaseOrders", {**order, "status": "Open",
+                                                       "lastModifiedDateTime": "2026-10-13T10:00:00Z"})
+
+
+def _ends(path: str) -> Callable[[httpx.Request], bool]:
+    return lambda r: r.method == "POST" and r.url.path.endswith(path)
+
+
+def _fo_build(wrap: Wrap) -> ErpAdapter:
+    from app.adapters.dynamics_fo import DynamicsFoAdapter
+    from app.adapters.dynamics_fo_sim import FakeDynamicsFo
+
+    server = FakeDynamicsFo(SimStore(None))
+    adapter = DynamicsFoAdapter(ErpHttp(base_url="https://orrfin-demo.operations.dynamics.com/data",
+                                        transport=wrap(httpx.MockTransport(server)), erp_name="F&O (simulated)"))
+    adapter.server = server
+    return adapter
+
+
+def _fo_count(adapter) -> dict[str, int]:
+    live = adapter.server._live
+    return {"bills": len(live("VendorInvoiceHeaders")),
+            "pos": sum(str(h.get("VendorOrderReference") or "").startswith("ORF-") for h in live("PurchaseOrderHeadersV2"))}
+
+
+def _fo_confirm(adapter, number: str) -> None:
+    """What a person does in F&O: approve and confirm the draft purchase order."""
+    for header in adapter.server._live("PurchaseOrderHeadersV2"):
+        if header["PurchaseOrderNumber"] == number:
+            adapter.server.data.put("PurchaseOrderHeadersV2", {**header, "DocumentApprovalStatus": "Confirmed"})
+
+
 CASES: dict[str, WriteCase] = {
+    "dynamics_fo": WriteCase("dynamics_fo", _fo_build, _fo_count, _ends("/VendorInvoiceHeaders"),
+                             _ends("/PurchaseOrderHeadersV2"), submit_po=_fo_confirm, multi_call_write=True),
+    "business_central": WriteCase("business_central", _bc_build, _bc_count, _ends("/purchaseInvoices"),
+                                  _ends("/purchaseOrders"), submit_po=_bc_release, multi_call_write=True),
     "tally": WriteCase("tally", _tally_build, _tally_count, _tally_import("Purchase"),
                        _tally_import("Purchase Order"), submit_po=_tally_regularise),
     "erpnext": WriteCase("erpnext", _erpnext_build, _erpnext_count,

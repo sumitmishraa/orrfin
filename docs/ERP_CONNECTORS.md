@@ -109,7 +109,13 @@ What changes per ERP is what "draft" means and which field the lookup uses.
   - In the demo, Orrfin calls the founder's laptop directly.
   - Educational mode only allows vouchers on some dates of each month (we believe the 1st, 2nd and 31st **(unverified)**), so the Tally fixtures must use those dates.
   - Tally replies in XML, with amounts as signed strings (negative = credit).
-- **Business Central.**
+- **Business Central** *(checked in Step 17, 12-13 Oct)*.
+  - purchaseOrder `status` ∈ Draft / In Review / Open; purchaseInvoice status includes Draft (unposted) (verified, learn.microsoft.com v2.0 reference).
+  - purchaseInvoice `vendorInvoiceNumber` (string, max 35) carries the supplier invoice no. (verified; the v2.0 description text is ambiguous).
+  - Client credentials: token from login.microsoftonline.com/{tenant}/oauth2/v2.0/token, scope `https://api.businesscentral.dynamics.com/.default`; app needs API.ReadWrite.All (verified).
+  - purchaseReceipt: sample shows number / vendorNumber / postingDate but no link to PO lines (unverified) → Orrfin reads `receivedQuantity` on PO lines.
+  - PO reference field for the Orrfin key: `vendorOrderNumber` (unverified; 35 chars → a 20-hex key prefix).
+- **Business Central (planning notes).**
   - The trial needs a **work email**: Gmail, Outlook.com and Hotmail are refused. Use name@orrfin.ai, or start a Microsoft 365 trial first.
   - Register an app in Microsoft Entra, give it the "Dynamics 365 Business Central" API permission, and add the app in BC ("Microsoft Entra Applications").
   - The trial lasts 30 days, so start it close to the pitch.
@@ -142,6 +148,7 @@ What changes per ERP is what "draft" means and which field the lookup uses.
 ---
 
 ## Sources
+- Business Central: [purchaseOrder resource](https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_purchaseorder), [purchaseInvoice resource](https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_purchaseinvoice), [create purchaseInvoices](https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/api/dynamics_purchaseinvoice_create), [GET purchaseReceipts](https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/api/dynamics_purchasereceipt_get), [service-to-service auth](https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/administration/automation-apis-using-s2s-authentication)
 - TallyPrime: [XML integration](https://help.tallysolutions.com/xml-integration/), [TallyPrime as server](https://help.tallysolutions.com/tallyprime-as-server/), [pre-requisites for integrations](https://help.tallysolutions.com/pre-requisites-for-integrations/), [Educational mode (Tally.Server 9)](https://help.tallysolutions.com/article/ts9rel54/ts9/education_mode.htm), [voucher creation via XML (case study)](https://help.tallysolutions.com/?p=108640)
 - ERPNext / Frappe: [token-based authentication](https://docs.frappe.io/framework/user/en/guides/integration/rest_api/token_based_authentication), [REST API](https://docs.frappe.io/framework/v15/user/en/api/rest), [Accounts Settings](https://docs.frappe.io/erpnext/accounts-settings.md), [Purchase Receipt](https://docs.frappe.io/erpnext/purchase-receipt.md), [submit via REST (forum)](https://discuss.frappe.io/t/how-to-call-rest-api-for-rename-cancel-and-submit/55828)
 - Tally XML integration: [help.tallysolutions.com/xml-integration](https://help.tallysolutions.com/xml-integration/), [XML message formats](https://help.tallysolutions.com/xml-message-formats), [Integration with TallyPrime](https://help.tallysolutions.com/?p=149532)

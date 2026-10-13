@@ -85,7 +85,7 @@ def test_saved_then_timed_out_ends_with_exactly_one_draft_po(client, db, monkeyp
     drain_with_retries(db)
 
     row = _row(db, request_id)
-    assert row.state == "CONFIRMED" and row.attempts == 1
+    assert row.state == "CONFIRMED" and row.attempts == (2 if case.multi_call_write else 1)
     assert case.count(adapter)["pos"] == 1
     assert adapter.find_po(row.idempotency_key) == row.erp_doc_name
     detail = client.get(f"/requests/{request_id}").json()

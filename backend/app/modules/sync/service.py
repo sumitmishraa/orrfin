@@ -71,8 +71,11 @@ def pull_from_erp(db: Session, org_id: uuid.UUID, adapter: ErpAdapter,
         # it back to the purchase request.
         request_id = None
         if record.orrfin_ref:
+            # Some ERPs hold only a prefix of the 64-hex key (Business Central: 35-character field).
+            key_match = (ErpOutbox.idempotency_key == record.orrfin_ref if len(record.orrfin_ref) == 64
+                         else ErpOutbox.idempotency_key.startswith(record.orrfin_ref))
             request_id = db.scalar(select(ErpOutbox.request_id).where(
-                ErpOutbox.org_id == org_id, ErpOutbox.idempotency_key == record.orrfin_ref))
+                ErpOutbox.org_id == org_id, ErpOutbox.doc_type == "purchase_order", key_match))
         values = {
             "erp_modified": record.modified, "vendor_id": vendor.id if vendor else None,
             "po_date": record.po_date, "schedule_date": record.schedule_date, "status": record.status,

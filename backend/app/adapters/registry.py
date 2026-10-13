@@ -9,6 +9,7 @@ in-process fake server) and, where a free test system exists, a *live* mode. Onl
 `connectors` and `erp_outbox` call `get_adapter`.
 """
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -124,6 +125,58 @@ def _busy_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
     return BusyAdapter(SimStore(state), state.parent / f"{connection.id}-files")
 
 
+# --- Microsoft: Business Central + F&O (Step 17) ------------------------------------------------------
+
+_SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+
+
+def _segment(value: str, label: str) -> str:
+    """Tenant and environment go into the URL path, so only plain identifiers are accepted."""
+    value = (value or "").strip()
+    if not _SAFE_SEGMENT.match(value):
+        raise LookupError(f"{label} may contain only letters, digits, dots, dashes and underscores.")
+    return value
+
+
+def _bc_adapter(values: dict[str, str], transport, label: Label, secrets: tuple[str, ...]) -> ErpAdapter:
+    from app.adapters.business_central import API_HOST, TOKEN_HOST, BusinessCentralAdapter
+
+    tenant = _segment(values["tenant_id"], "Tenant ID")
+    environment = _segment(values.get("environment") or "Production", "Environment")
+    api = ErpHttp(base_url=f"{API_HOST}/v2.0/{tenant}/{environment}/api/v2.0", transport=transport,
+                  secrets=secrets, erp_name="Business Central" + (" (simulated)" if label == "simulated" else ""))
+    token = ErpHttp(base_url=TOKEN_HOST, transport=transport, secrets=secrets, erp_name="Microsoft Entra")
+    return BusinessCentralAdapter(api, token, tenant=tenant, client_id=values["client_id"].strip(),
+                                  client_secret=values["client_secret"].strip(), company_name=values.get("company"),
+                                  label=label)
+
+
+def _bc_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
+    import httpx
+
+    from app.adapters.business_central_sim import FakeBusinessCentral
+    from app.adapters.sim_store import SimStore
+
+    return _bc_adapter({"tenant_id": "simulated", "client_id": "simulated", "client_secret": "simulated"},
+                       httpx.MockTransport(FakeBusinessCentral(SimStore(state))), "simulated", ())
+
+
+def _bc_live(connection: "ErpConnection", values: dict[str, str]) -> ErpAdapter:
+    return _bc_adapter(values, None, "live", secret_values(CATALOGUE["business_central"], values))
+
+
+def _fo_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
+    import httpx
+
+    from app.adapters.dynamics_fo import DynamicsFoAdapter
+    from app.adapters.dynamics_fo_sim import FakeDynamicsFo
+    from app.adapters.sim_store import SimStore
+
+    return DynamicsFoAdapter(ErpHttp(base_url="https://orrfin-demo.operations.dynamics.com/data",
+                                     transport=httpx.MockTransport(FakeDynamicsFo(SimStore(state))),
+                                     erp_name="Dynamics 365 F&O (simulated)"))
+
+
 CATALOGUE: dict[str, ConnectorSpec] = {
     "erpnext": ConnectorSpec(
         system="erpnext", name="ERPNext", segment="Indian SMB and mid-market", live_label="live", step=13, built=True,
@@ -161,11 +214,24 @@ CATALOGUE: dict[str, ConnectorSpec] = {
         note="File-based: Orrfin writes an import file that a person loads into BUSY."),
     "business_central": ConnectorSpec(
         system="business_central", name="Microsoft Dynamics 365 Business Central", segment="Mid-market, global and India",
-        live_label="live", step=17, built=False,
-        signup="https://dynamics.microsoft.com/business-central (30-day trial, work email)"),
+        live_label="live", step=17, built=True,
+        signup="https://dynamics.microsoft.com/business-central (30-day trial, work email)",
+        fields=(
+            CredentialField("tenant_id", "Directory (tenant) ID", help="Entra → App registrations → Orrfin → Overview"),
+            CredentialField("client_id", "Application (client) ID", help="Same page as the tenant ID"),
+            CredentialField("client_secret", "Client secret value", secret=True,
+                            help="Entra → Orrfin → Certificates & secrets → New client secret → copy the Value"),
+            CredentialField("environment", "Environment", required=False, placeholder="Production",
+                            help="Business Central environment name (blank = Production)"),
+            CredentialField("company", "Company name", required=False,
+                            help="Only if the environment has more than one company"),
+        ),
+        host_policy=HostPolicy(patterns=("api.businesscentral.dynamics.com", "login.microsoftonline.com")),
+        simulated=_bc_simulated, live=_bc_live),
     "dynamics_fo": ConnectorSpec(
         system="dynamics_fo", name="Microsoft Dynamics 365 Finance & Operations", segment="Large enterprise",
-        live_label="simulated", step=17, built=False, signup="Partner or customer environment only"),
+        live_label="simulated", step=17, built=True, signup="Partner or customer environment only",
+        simulated=_fo_simulated),
     "sap_s4": ConnectorSpec(
         system="sap_s4", name="SAP S/4HANA Cloud", segment="Large enterprise", live_label="sandbox", step=18,
         built=False, signup="https://api.sap.com (free account → Show API Key)"),
