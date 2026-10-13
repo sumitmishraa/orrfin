@@ -157,3 +157,11 @@ For the full demo flow with matching invoices, use **Use simulated** on the same
 
 Needs a partner demo licence, so it runs on fixtures in the Service Layer's format. **Use simulated** on its card.
 Drafts are B1 *Drafts* (A/P invoice and purchase order) that a person adds in B1.
+
+---
+
+## Oracle Fusion Cloud ERP and Oracle NetSuite (Simulated)
+
+Neither has a free test system, so both run on fixtures shaped like their published REST APIs. **Use simulated** on
+their cards to try them. NetSuite shows a stronger safety net: Orrfin upserts drafts by **external ID**, NetSuite's own
+idempotency, so even a lost reply can't create a second bill.

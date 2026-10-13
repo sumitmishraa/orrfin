@@ -134,7 +134,9 @@ What changes per ERP is what "draft" means and which field the lookup uses.
   - India accounts use the `.in` domains (`accounts.zoho.in`, `www.zohoapis.in`).
   - Every call needs `organization_id`.
   - The free plan caps bills at 1,000 a year (plenty for a demo).
-- **NetSuite.** The externalId upsert is a model idempotency mechanism. Mention it in the pitch as "for ERPs that support it, we use the ERP's own idempotency".
+- **Oracle Fusion** *(checked in Step 19, 13 Oct; community and vendor-blog sources)*: invoices filter `q=InvoiceNumber='…'`, conditions joined with `;` in REST framework v1 (RowMatch SQL-like syntax in v2+); paging with limit / offset / hasMore. ValidationStatus, receivingReceiptTransactions and draftPurchaseOrders names: unverified.
+- **NetSuite** *(checked in Step 19)*: upsert by external ID = `PUT /services/rest/record/v1/vendorBill/eid:<id>` (third-party docs); async calls can carry `X-NetSuite-Idempotency-Key`.
+- **NetSuite (planning notes).** The externalId upsert is a model idempotency mechanism. Mention it in the pitch as "for ERPs that support it, we use the ERP's own idempotency".
 - **India GST.** Only ERPNext, Tally, Zoho Books and Business Central (India localisation) carry GSTIN and HSN natively in the demo. In simulated global ERPs, GSTIN lives in the vendor tax-registration field; each adapter maps it into `ErpVendor.gstin`.
 
 ---

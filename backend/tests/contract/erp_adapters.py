@@ -118,6 +118,22 @@ def sap_b1_simulated() -> ErpAdapter:
     return SapB1Adapter(http, company_db="SBODEMOIN", user="manager", password="x")
 
 
+def oracle_simulated() -> ErpAdapter:
+    from app.adapters.oracle_fusion import OracleFusionAdapter
+    from app.adapters.oracle_fusion_sim import FakeOracleFusion
+
+    return OracleFusionAdapter(ErpHttp(base_url="https://oracle.test", erp_name="Oracle Fusion",
+                                       transport=httpx.MockTransport(FakeOracleFusion(SimStore(None)))))
+
+
+def netsuite_simulated() -> ErpAdapter:
+    from app.adapters.netsuite import NetSuiteAdapter
+    from app.adapters.netsuite_sim import FakeNetSuite
+
+    return NetSuiteAdapter(ErpHttp(base_url="https://netsuite.test", erp_name="NetSuite",
+                                   transport=httpx.MockTransport(FakeNetSuite(SimStore(None)))))
+
+
 def busy_simulated() -> ErpAdapter:
     return BusyAdapter(SimStore(None), Path(tempfile.mkdtemp(prefix="orrfin-busy-")))
 
@@ -134,6 +150,8 @@ ADAPTERS: dict[str, Callable[[], ErpAdapter]] = {
     "sap-s4-simulated": sap_s4_simulated,
     "sap-s4-sandbox": sap_s4_sandbox,
     "sap-b1-simulated": sap_b1_simulated,
+    "oracle-simulated": oracle_simulated,
+    "netsuite-simulated": netsuite_simulated,
 }
 
 

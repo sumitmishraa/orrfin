@@ -213,7 +213,67 @@ def _b1_draft(kind: str) -> Callable[[httpx.Request], bool]:
     return lambda r: r.method == "POST" and r.url.path.endswith("/Drafts") and kind.encode() in r.content
 
 
+def _oracle_build(wrap: Wrap) -> ErpAdapter:
+    from app.adapters.oracle_fusion import OracleFusionAdapter
+    from app.adapters.oracle_fusion_sim import FakeOracleFusion
+
+    server = FakeOracleFusion(SimStore(None))
+    adapter = OracleFusionAdapter(ErpHttp(base_url="https://oracle.test", erp_name="Oracle (simulated)",
+                                          transport=wrap(httpx.MockTransport(server))))
+    adapter.server = server
+    return adapter
+
+
+def _oracle_count(adapter) -> dict[str, int]:
+    return {"bills": len(adapter.server.data.all("invoices")),
+            "pos": len(adapter.server.data.all("draftPurchaseOrders"))}
+
+
+def _oracle_submit(adapter, number: str) -> None:
+    """What a person does in Fusion: submit the draft; it becomes an open purchase order."""
+    from decimal import Decimal
+
+    draft = next(d for d in adapter.server.data.all("draftPurchaseOrders") if d["OrderNumber"] == number)
+    lines = [{**ln, "Amount": str(Decimal(str(ln["Quantity"])) * Decimal(str(ln["Price"]))), "TaxRate": "18"}
+             for ln in draft["lines"]]
+    adapter.server.data.put("purchaseOrders", {**draft, "_id": number, "Status": "OPEN", "lines": lines,
+                                               "LastUpdateDate": "2026-10-13T10:00:00+05:30"})
+
+
+def _netsuite_build(wrap: Wrap) -> ErpAdapter:
+    from app.adapters.netsuite import NetSuiteAdapter
+    from app.adapters.netsuite_sim import FakeNetSuite
+
+    server = FakeNetSuite(SimStore(None))
+    adapter = NetSuiteAdapter(ErpHttp(base_url="https://netsuite.test", erp_name="NetSuite (simulated)",
+                                      transport=wrap(httpx.MockTransport(server))))
+    adapter.server = server
+    return adapter
+
+
+def _netsuite_count(adapter) -> dict[str, int]:
+    return {"bills": len(adapter.server.data.all("vendorBill")),
+            "pos": sum(1 for p in adapter.server.data.all("purchaseOrder") if p.get("externalId"))}
+
+
+def _netsuite_approve(adapter, tran_id: str) -> None:
+    """What a person does in NetSuite: approve the pending purchase order."""
+    from app.adapters.netsuite import APPROVED
+
+    po = next(p for p in adapter.server.data.all("purchaseOrder") if p.get("tranId") == tran_id)
+    adapter.server.data.put("purchaseOrder", {**po, "approvalStatus": {"id": APPROVED, "refName": "Approved"},
+                                              "lastModifiedDate": "2026-10-13T10:00:00+00:00"})
+
+
+def _put(path_part: str) -> Callable[[httpx.Request], bool]:
+    return lambda r: r.method == "PUT" and path_part in r.url.path
+
+
 CASES: dict[str, WriteCase] = {
+    "oracle_fusion": WriteCase("oracle_fusion", _oracle_build, _oracle_count, _sap_post("invoices"),
+                               _sap_post("draftPurchaseOrders"), submit_po=_oracle_submit),
+    "netsuite": WriteCase("netsuite", _netsuite_build, _netsuite_count, _put("/vendorBill/eid:"),
+                          _put("/purchaseOrder/eid:"), submit_po=_netsuite_approve),
     "sap_s4": WriteCase("sap_s4", _sap_build, _sap_count, _sap_post("A_SupplierInvoice"),
                         _sap_post("A_PurchaseRequisitionHeader")),
     "sap_b1": WriteCase("sap_b1", _b1_build, _b1_count, _b1_draft("oPurchaseInvoices"), _b1_draft("oPurchaseOrders"),

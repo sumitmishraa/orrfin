@@ -225,6 +225,32 @@ def _sap_b1_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
     return SapB1Adapter(http, company_db="SBODEMOIN", user="manager", password="simulated")
 
 
+# --- Oracle: Fusion + NetSuite (Step 19, both simulated) -----------------------------------------------
+
+def _oracle_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
+    import httpx
+
+    from app.adapters.oracle_fusion import OracleFusionAdapter
+    from app.adapters.oracle_fusion_sim import FakeOracleFusion
+    from app.adapters.sim_store import SimStore
+
+    return OracleFusionAdapter(ErpHttp(base_url="https://orrfin-demo.fa.simulated.oraclecloud.com",
+                                       transport=httpx.MockTransport(FakeOracleFusion(SimStore(state))),
+                                       erp_name="Oracle Fusion (simulated)"))
+
+
+def _netsuite_simulated(connection: "ErpConnection", state: Path) -> ErpAdapter:
+    import httpx
+
+    from app.adapters.netsuite import NetSuiteAdapter
+    from app.adapters.netsuite_sim import FakeNetSuite
+    from app.adapters.sim_store import SimStore
+
+    return NetSuiteAdapter(ErpHttp(base_url="https://orrfin-demo.suitetalk.api.netsuite.com",
+                                   transport=httpx.MockTransport(FakeNetSuite(SimStore(state))),
+                                   erp_name="NetSuite (simulated)"))
+
+
 CATALOGUE: dict[str, ConnectorSpec] = {
     "erpnext": ConnectorSpec(
         system="erpnext", name="ERPNext", segment="Indian SMB and mid-market", live_label="live", step=13, built=True,
@@ -293,10 +319,11 @@ CATALOGUE: dict[str, ConnectorSpec] = {
         signup="Partner demo licence only", simulated=_sap_b1_simulated),
     "oracle_fusion": ConnectorSpec(
         system="oracle_fusion", name="Oracle Fusion Cloud ERP", segment="Large enterprise", live_label="simulated",
-        step=19, built=False, signup="Customer pod only"),
+        step=19, built=True, signup="Customer pod only", simulated=_oracle_simulated),
     "netsuite": ConnectorSpec(
         system="netsuite", name="Oracle NetSuite", segment="Mid-market, fast-growing companies",
-        live_label="simulated", step=19, built=False, signup="Customer sandbox only"),
+        live_label="simulated", step=19, built=True, signup="Customer sandbox only", simulated=_netsuite_simulated,
+        note="Uses NetSuite's own idempotency: drafts are upserted by external ID."),
     "zoho_books": ConnectorSpec(
         system="zoho_books", name="Zoho Books", segment="Indian SMB", live_label="live", step=20, built=False,
         signup="https://www.zoho.com/in/books (free plan)"),
