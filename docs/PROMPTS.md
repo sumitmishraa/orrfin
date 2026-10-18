@@ -516,14 +516,146 @@ Finish: ERP_CONNECTORS.md updated, README (how to start Odoo), PROGRESS.md, comm
 
 ---
 
-## Step 21 — Put it on AWS (public demo link)
+## Step 21 — Control dashboard + Rules page (new in v2.3)
+
+`/model sonnet` · **Skills:** `ecc:fastapi-patterns`, `ecc:frontend-patterns`
+
+```
+STEP 21 — Dashboard + Rules. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §5, §6, §9 and §11 M6c.
+Use skills: ecc:fastapi-patterns, ecc:frontend-patterns (dataviz guidance for bars).
+- modules/insights/: GET /insights/summary?period=month|quarter|all: open requests by step, average + median approval time, invoices on hold
+  + ₹ at risk, first-pass match rate, exceptions by rule code, slowest approvers, spend by category / cost centre / top vendors, ERP draft
+  states, extraction quality. Decimal money as strings; org-scoped; requesters see only their own; buyers their categories.
+- /home becomes the landing page. Plain HTML/SVG bars, brand colours, no new chart package.
+- /rules: IF/THEN cards for approval tiers, category → buyer, SoD (read-only), matching rules + tolerances + RULE_SET_VERSION (read-only).
+  Admin edits tiers (from ₹0, no gaps/overlaps, last open-ended) and category buyers; edit + audit in one transaction; old tiers deactivated.
+  Edits apply to new approval chains only; the page says so.
+Done when: insights numbers tested on a fixed dataset; org A cannot see org B; non-admin edit → 403; bad tiers refused; an in-flight
+request keeps its chain while a new one uses the new tier; tsc + lint clean.
+Finish: PROGRESS.md, commit "step 21", reply ≤10 lines.
+```
+
+---
+
+## Step 22 — Workflows: reminders, exception tasks, category approvals, budgets, WhatsApp preview (new in v2.4)
+
+`/model sonnet` · **Skills:** `ecc:fastapi-patterns`, `ecc:database-migrations`
+
+```
+STEP 22 — Workflows. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §5, §9 and change rows 29–30.
+Use skills: ecc:fastapi-patterns, ecc:database-migrations.
+- GET /tasks (derived): approval steps waiting on me with age and "overdue" past org_settings.approval_sla_hours (default 48), exception tasks
+  assigned to me, invoices to review. Bell with count in the sidebar. Nudge on an overdue step → audit "nudged"; the task shows who nudged.
+- exception_tasks: reviewer asks the requester a question on a held invoice; approve → 409 while open; the assignee answers; the assignee
+  can never approve that invoice. Audited.
+- categories.extra_approver_id + extra_step_label: an extra named step after the amount tiers (seed "Software & SaaS" → IT security lead).
+- budgets per cost centre per quarter: committed + spent, warning on the request page, dashboard tile; editable on /rules. Never blocks.
+- WhatsApp preview on each task: the message an approver would get + the normal link (login required). "Preview — not sent".
+Done when: tests for overdue, nudge audit, task blocking approval, extra step SoD, budget maths; all earlier tests pass; tsc + lint clean.
+Finish: PROGRESS.md, commit "step 22", reply ≤10 lines.
+```
+
+---
+
+## Step 23 — Orrfin Assistant: the read-only AI agent (new in v2.3)
+
+`/model sonnet` · **Skills:** `claude-api`, `ecc:hexagonal-architecture`
+
+```
+STEP 23 — Assistant. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §4 (assistant rule), §5 (assistant_turns), docs/adr/0005.
+Use skills: claude-api, ecc:hexagonal-architecture.
+- Port ports/assistant.py; adapters gemini_assistant.py (manual function calling, ≤6 tool rounds, one SDK attempt, 60 s),
+  claude_assistant.py (tool use), fake_assistant.py (scripted). Prompts in ai_prompts.py with ASSISTANT_PROMPT_VERSION.
+- modules/assistant/: read-only tools run as the logged-in user over existing service code. No writes, no ERP calls, no raw document text.
+- POST /assistant/ask: links only to IDs a tool returned; every ₹ figure checked against tool results; 30 questions/hour/user;
+  assistant_turns log. AI down → "Assistant unavailable".
+- Assistant side panel on every page; suggested questions per role and page. ADR 0007; Trust page section.
+Done when: fake-model tests prove scope per tool, dropped unknown links, the ₹ warning, rate limit, outage fallback and a logged turn.
+Finish: PROGRESS.md, commit "step 23", reply ≤10 lines.
+```
+
+---
+
+## Step 24 — Intake agent, exception notes, AI "what changed" notes, assistant evaluation (new in v2.3/v2.4)
+
+`/model sonnet` · **Skills:** `ecc:eval-harness`, `ecc:tdd-workflow`
+
+```
+STEP 24 — Intake agent + AI notes + eval. Read CLAUDE.md, docs/PROGRESS.md, docs/adr/0007.
+Use skills: ecc:eval-harness, ecc:tdd-workflow.
+- POST /assistant/draft-request: one sentence → a pre-filled request (category, title, justification, needed-by, lines + qty). Rates from
+  the last PO price, never AI-guessed. Shows the approval chain and budget effect. Requester submits; audit records drafted_by_ai.
+- "Draft a note" on an exception (and for an exception-task question): from rule results; copy only.
+- POST /insights/notes: 3–5 "what changed" bullets from computed comparisons only; ₹-checked; template fallback.
+- evals/assistant/: ~25 questions, permission cases, an injection invoice; CI with the fake model; run_assistant_eval.py --provider gemini.
+Done when: the eval passes in CI; a drafted request still blocks self-approval; notes fall back cleanly without AI.
+Finish: PROGRESS.md, commit "step 24", reply ≤10 lines.
+```
+
+---
+
+## Step 25 — Simulated payments, payment-risk checks, TDS (new in v2.4)
+
+`/model sonnet` · **Skills:** `ecc:tdd-workflow`, `ecc:security-review`
+
+```
+STEP 25 — Payments. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §6b, §6c, §9 and docs/adr/0008.
+Use skills: ecc:tdd-workflow (tests first for TDS and risk), ecc:security-review.
+- vendor_payment_profiles (PAN, TDS section, bank account, IFSC) with maker-checker: whoever changes bank details cannot verify them.
+- tds.py (194C/194J/194Q, thresholds, nearest rupee, 206AA no-PAN rate) and risk.py (block/hold rules), both pure and versioned.
+- payment_runs + payment_lines: finance prepares from approved invoices; preparer ≠ approver; invoice approver ≠ payment approver;
+  approval limit; blocking risk → cannot submit; holds need a reason.
+- Generic NEFT/RTGS bulk CSV; "Send to bank (simulated)" → job bank_settle: UTRs, one seeded failure, a bank statement CSV.
+- /payments UI; vendor payment profile + verify; dashboard payment tiles; assistant payment tools.
+Done when: TDS and net asserted to the paisa; every SoD 403; bank file total = run total; settle twice = one settlement; no high
+security findings.
+Finish: PROGRESS.md, commit "step 25", reply ≤10 lines.
+```
+
+---
+
+## Step 26 — Bank reconciliation + month-end close cockpit (new in v2.4)
+
+`/model sonnet` · **Skills:** `ecc:tdd-workflow`, `ecc:fastapi-patterns`
+
+```
+STEP 26 — Bank + close. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN change row 32, docs/adr/0008.
+Use skills: ecc:tdd-workflow, ecc:fastapi-patterns.
+- Bank statement CSV import (duplicate file refused); reconcile.py: UTR → matched; amount + date ±3 days + name → suggested (a person
+  accepts); else unmatched. /bank page.
+- close_periods + /close: live checklist, received-not-invoiced report (CSV), AI "what changed" notes, close with sign-off; a closed month
+  refuses invoice and payment approvals dated in it (409) until an admin reopens with a reason.
+Done when: the mock bank statement reconciles 100% by UTR end to end; period lock tested; audit row per change.
+Finish: PROGRESS.md, commit "step 26", reply ≤10 lines.
+```
+
+---
+
+## Step 27 — GSTR-2B ITC matching + photo / handwritten bills (new in v2.4)
+
+`/model sonnet` · **Skills:** `ecc:tdd-workflow`, `ecc:regex-vs-llm-structured-text`
+
+```
+STEP 27 — GSTR-2B + photo bills. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §5 duplicate key, §7, change row 34.
+Use skills: ecc:tdd-workflow, ecc:regex-vs-llm-structured-text.
+- POST /gstr2b (GSTN 2B JSON shape): match by GSTIN + normalised invoice no + fiscal year → matched / amount differs / ITC at risk / not in
+  books. /gst page, dashboard "ITC at risk" tile, payment-risk hold for invoices missing from 2B. Matching only, no filing.
+- Upload accepts JPEG/PNG photos (magic bytes, ≤10 MB); Extractor.extract(data, mime_type) in every adapter; prompt: never guess an
+  unreadable figure. Two synthetic photo invoices in the eval set.
+Done when: 2B matching tests pass on the seed fixture; a photo invoice goes upload → extract → confirm → match with the fake extractor.
+Finish: PROGRESS.md, commit "step 27", reply ≤10 lines.
+```
+
+---
+
+## Step 28 — Put it on AWS (public demo link)
 
 **By hand first:** BUILD_PLAN §10 **B, C, E**: S3 bucket, RDS database, EC2 server, Elastic IP, DNS.
 
 `/model sonnet` · **Skills:** `ecc:deployment-patterns`, `ecc:docker-patterns`
 
 ```
-STEP 21 — Deploy. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §9 (IAM) and §10 E–F.
+STEP 28 — Deploy. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §9 (IAM) and §10 E–F.
 Use skills: ecc:deployment-patterns, ecc:docker-patterns.
 - S3 implementation of FileStore; production docker-compose (api, worker, web, caddy); infra/deploy.sh (git tag → build → migrate → up).
 - Generate the exact inline IAM policy JSON for my bucket and secrets (ask me for the ARNs). ERP credentials (ERPNext, BC, SAP key, Zoho) go into
@@ -536,12 +668,12 @@ Finish: PROGRESS.md, commit and tag "demo-1", reply ≤12 lines.
 
 ---
 
-## Step 22 — Final review, QA and rehearsal
+## Step 29 — Final review, QA and rehearsal
 
 `/model sonnet` · **Skills:** `ecc:security-review`, `gstack-qa`
 
 ```
-STEP 22 — Pre-demo check. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §11 M7, §12 and §13.
+STEP 29 — Pre-demo check. Read CLAUDE.md, docs/PROGRESS.md, BUILD_PLAN §11 M7, §12 and §13.
 Use skills: ecc:security-review, then gstack-qa on the public URL.
 - Security review of auth, SoD (requests and invoices), IAM, secrets (incl. every ERP credential), uploads. Fix only high and critical findings.
 - QA the full §13 demo script end to end (intake → PO → invoice → bill → Connectors page); fix blockers only.

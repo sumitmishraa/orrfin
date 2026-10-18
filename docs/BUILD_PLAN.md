@@ -1,7 +1,7 @@
 # Orrfin P2P + Invoice-Matching Prototype: Build Plan v2
 
 **Status:** approved plan; Step 1 (walking skeleton) built. See `docs/PROGRESS.md`.
-**Version:** v2.2 (5 Oct 2026). v2 (26 Sep) replaced v1 after an engineering review scored v1 at 50/100. v2.1 adds the intake-to-procure workflow and full P2P (Orrfin drafts the PO), approved by the founder on 29 Sep. v2.2 adds multi-ERP connectors (Tally, Microsoft Dynamics, SAP, Oracle, Zoho, Odoo beside ERPNext), approved by the founder on 5 Oct; see "v2.2 changes" below and `docs/ERP_CONNECTORS.md`. 11 Oct: Gemini is the working AI until Bedrock access is granted (change 22, ADR 0005).
+**Version:** v2.4 (18 Oct 2026): the founder extended v2.3 to everything the Zip/DualEntry guide recommends, including simulated payments, payment-risk checks, TDS, bank reconciliation, month-end close, GSTR-2B matching, photo bills, budgets and workflow automations (changes 28–35). v2.3 (18 Oct 2026): adds a control dashboard, a Rules page and a read-only AI assistant + intake agent, from the Zip/DualEntry competitor research, approved by the founder on 18 Oct (changes 23–27 below). v2.2 (5 Oct 2026). v2 (26 Sep) replaced v1 after an engineering review scored v1 at 50/100. v2.1 adds the intake-to-procure workflow and full P2P (Orrfin drafts the PO), approved by the founder on 29 Sep. v2.2 adds multi-ERP connectors (Tally, Microsoft Dynamics, SAP, Oracle, Zoho, Odoo beside ERPNext), approved by the founder on 5 Oct; see "v2.2 changes" below and `docs/ERP_CONNECTORS.md`. 11 Oct: Gemini is the working AI until Bedrock access is granted (change 22, ADR 0005).
 **Target:** a working investor demo on synthetic data. The pitch date moved later (v2.1) and is not yet fixed; build in `docs/PROMPTS.md` step order.
 **Not a target:** production use or real customer data. See section 12 for the gates that must be passed before a pilot.
 
@@ -46,6 +46,33 @@ Still out of scope: vendor quotes/comparison, new-vendor onboarding requests, pa
 | 21 | Steps renumbered: Step 11 = ERP research, Step 12 = multi-ERP plug, 13–15 = live ERPNext + write-back, 16–20 = connector families, 21 = deploy, 22 = final review. SAP and Tally leave the stretch goals. | Design the plug before write-back code is written against one ERP |
 | 22 | *(11 Oct)* **Gemini is the working AI provider** (`AI_PROVIDER=gemini`, Google Gemini API key) until Bedrock access is granted; Bedrock stays the target and needs only a setting change. Same prompts, schema, retries and fallbacks (ADR 0005). | Bedrock access is still blocked; real extraction accuracy must be measured now, not after the pitch |
 
+**v2.3 changes (18 Oct 2026, approved by the founder, including the §2 and §5 additions):** from the Zip and DualEntry field guide. Zip users' most common complaint is weak reporting; its most-praised feature is the no-code rule builder; both products follow "AI suggests, a person approves".
+
+| # | Change | Reason |
+|---|---|---|
+| 23 | **Control dashboard** (`/home`): approval cycle time, invoices on hold and ₹ at risk, first-pass match rate, exceptions by type, spend by category / cost centre / vendor, ERP draft status, extraction quality. Deterministic SQL, no AI. Was a stretch goal. | The CFO's first screen; beats Zip's weakest area |
+| 24 | **Rules page** (`/rules`): every rule as an IF/THEN card. Admins edit approval tiers and category buyers (audited; new chains only). Matching tolerances and SoD are shown read-only. | Makes the controls visible and ownable without code |
+| 25 | **Orrfin Assistant**: a read-only AI agent. It answers questions through tools that run as the logged-in user (org and role scope), cites only records a tool returned, and has every ₹ figure checked by code. It cannot submit, approve, reject or write to an ERP. ADR 0007. | "Why is this invoice on hold?" in one question, without weakening any control |
+| 26 | **Intake agent**: one sentence → a pre-filled request form. Rates come from past PO prices, never from the AI; the requester checks and submits. **Exception notes**: drafted messages, copied by a person, never sent by Orrfin. | Zip's "front door" experience, with a human still pressing every button |
+| 27 | §5 adds `assistant_turns` (additive). Steps renumbered: 21 dashboard + rules, 22 assistant, 23 intake agent + evaluation, 24 deploy, 25 final review. | Traceability of every AI answer; build before the public deploy |
+
+Not built in v2.3 (superseded by v2.4 below for most items).
+
+**v2.4 changes (18 Oct 2026, approved by the founder, including changes to the non-negotiables and §1, §2, §5, §6, §8):**
+
+| # | Change | Reason |
+|---|---|---|
+| 28 | **Non-negotiables changed.** "No payments" becomes "no **real** money movement": payments are simulated (bank bulk file + a mock bank, ADR 0008). Still no GST filing, no journals, no ERP payment entries. | Founder: show the full procure-to-pay loop the guide describes, without real money |
+| 29 | **Workflows**: My tasks + bell, overdue approvals against an SLA, Nudge; exception tasks (hold an invoice and ask the requester, release on answer); an extra named approver per category (e.g. IT security for Software); WhatsApp message **preview** (nothing sent). | Zip's reminders, exception automation and conditional approvals |
+| 30 | **Budgets** per cost centre and quarter; warnings only, never a block. | Zip's "budget checked before approval" |
+| 31 | **Simulated payments** (§6b, §6c): vendor payment profiles with maker-checker bank changes, payment runs with SoD, deterministic payment-risk rules, TDS (194C/194J/194Q, to be confirmed by a CA), generic NEFT/RTGS bulk file, mock bank settlement with UTRs. | Zip payments + payment risk, India-ready |
+| 32 | **Bank reconciliation** (deterministic: UTR, then amount + date + name as a suggestion a person accepts) and a **month-end close cockpit** (checklist, received-not-invoiced report, period lock, no journals). | DualEntry's bank matching and close, without becoming a ledger |
+| 33 | **AI "what changed" notes** from computed numbers only, ₹-checked like the assistant. | DualEntry flux analysis |
+| 34 | **GSTR-2B ITC matching** (matching only) and **photo / handwritten bills** (JPEG/PNG, same checks and human confirmation). | India gaps neither competitor fills |
+| 35 | Steps: 21 dashboard + rules, 22 workflows + budgets, 23 assistant, 24 intake agent + AI notes + eval, 25 payments, 26 bank + close, 27 GSTR-2B + photo bills, 28 deploy, 29 final review. | One step per working, tested slice |
+
+Still not built: real bank connections, GST filing, journals, ERP payment entries, contract review, vendor portal, vendor quotes, Slack.
+
 ---
 
 ## 1. What we are building (one sentence)
@@ -73,10 +100,10 @@ It has two connected workflows:
 
 **Hard boundaries:**
 - Synthetic data only.
-- No payments.
-- No GST filing.
-- No ledger posting. ERPNext drafts (POs and bills) are submitted by a human inside ERPNext.
-- AI never decides whether an invoice matches.
+- *(v2.4)* No real money movement: payments are simulated (bank file + mock bank). No bank connection.
+- No GST filing (GSTR-2B is read and matched only, v2.4).
+- No ledger posting: no journals, no ERP payment entries. ERP drafts (POs and bills) are submitted by a human inside the ERP.
+- AI never decides whether an invoice matches, whether a payment is risky, how much TDS applies, or whether a bank line reconciles.
 
 ---
 
@@ -96,6 +123,8 @@ It has two connected workflows:
 | Purchase Invoice (the bill) | ERP | Orrfin writes a **draft** only, through the outbox |
 | ERP connections *(v2.2)*: which ERP an org uses, its demo label and mode | **Orrfin** | Owns; credentials live in env vars / Secrets Manager, never in the table |
 | Audit trail / control graph | **Orrfin** | Owns; append-only, hash-chained per invoice |
+| Approval tiers and category buyers as edited on the Rules page *(v2.3)* | **Orrfin** | Owns; each edit audited; applies to approval chains started after the edit |
+| Assistant questions, tool calls and answers *(v2.3)* | **Orrfin** | Owns (`assistant_turns`); a log, not a business record: the assistant changes nothing |
 
 **Conflict rule:** if an ERP record changes after Orrfin has matched against it (its `erp_modified` is newer), the match is marked **stale** and must be re-run before approval.
 
@@ -166,6 +195,7 @@ The `procurement` module owns the intake-to-procure workflow: intake requests, r
 - Adapters convert ERP data into Orrfin's own data model. No ERP-specific field names (ERPNext, Tally, SAP, …) appear outside `adapters/`.
 - Only the `sync` module calls `ErpAdapter`. Only the `invoices` module calls `Extractor`.
 - Every state change and its audit row are written in the **same database transaction**.
+- *(v2.3)* The `assistant` module calls the AI through its own `Assistant` port (same provider setting as extraction). Its tools are **read-only**, call existing service code as the logged-in user, never call `ErpAdapter`, and never pass raw document text to the model. Writes happen only through the normal endpoints, by a person.
 
 **Repo layout:**
 ```
@@ -211,6 +241,7 @@ Every business table has `id (uuid)`, `org_id (uuid, not null, indexed)`, `creat
 | `jobs` | `kind`, `payload jsonb`, `status`, `attempts`, `max_attempts`, `run_after`, `last_error` |
 | `erp_outbox` | `idempotency_key` (unique), `erp_connection_id` *(v2.2)*, `doc_type` ∈ {purchase_invoice, purchase_order} *(v2.1)*, `invoice_id` (nullable), `request_id` (nullable) — exactly one of the two is set, `state` ∈ {PENDING, SENT, CONFIRMED, FAILED, UNKNOWN}, `erp_doc_name`, `attempts`, `last_error` |
 | `audit_events` | `org_id`, `entity_type`, `entity_id`, `seq`, `actor_id`, `action`, `payload jsonb`, `prev_hash`, `hash`; unique (`entity_id`, `seq`) |
+| `assistant_turns` *(v2.3)* | `user_id`, `question`, `tool_calls jsonb` (tool names + arguments, not results), `answer`, `model_id`, `prompt_version`, `grounded` (every ₹ figure found in tool results) |
 
 **Database grants:** the application role gets `INSERT, SELECT` on `audit_events`, with no `UPDATE` or `DELETE`. Migrations run as a separate owner role.
 
@@ -417,12 +448,13 @@ Roughly $20–40 for the week. After the pitch, snapshot RDS, then stop or delet
 | 11–12 | **M5b Multi-ERP plug** *(v2.2)*. ERP research (`docs/ERP_CONNECTORS.md`); the `ErpAdapter` port extended with write and lookup methods + `capabilities()`; registry; `erp_connections` (additive migration); canonical dataset → per-ERP fixtures; shared contract suite; Connectors page with Live/Sandbox/Simulated badges. | The ERPNext fake passes the shared contract suite through the registry; all 182+ existing tests still pass; switching the active connection and syncing twice leaves row counts unchanged; rows from two connections never collide. |
 | 13–15 | **M6 Live ERPNext + outbox write-back** (§8): draft bills **and** draft POs, written once against the port so every adapter reuses them. | **Failure-injection tests, one per document type:** the POST succeeds, then the adapter raises a timeout → the retry does a lookup → exactly **one** Purchase Invoice / Purchase Order exists in ERPNext and the outbox row is `CONFIRMED`. Approved request → draft PO in ERPNext → submitted by a human → pulled back as `po_open`. Manual check in the ERPNext UI. |
 | 16–20 | **M6b Connectors** *(v2.2)*. Tally (live) + BUSY (sim); Business Central (live) + F&O (sim); SAP S/4HANA (sandbox read + sim write) + Business One (sim); Oracle Fusion + NetSuite (sim); Zoho Books + Odoo (live). | Each adapter passes the shared contract suite, plus a failure-injection test for its own lookup key (POST succeeds, then a timeout → lookup → exactly one document). Each **live** connector: "Sync" shows that ERP's POs in Orrfin, and one approved invoice creates exactly one draft in that ERP (checked in its UI). The Connectors page shows the right badge for each. |
-| 21–22 | **M7 Deploy, rehearse and freeze.** AWS deploy, security review, 3 rehearsals, backup video, tag `demo-final`. | Demo runs cleanly twice in a row on the public URL. Trust page wording matches §13. RDS automated backups confirmed. |
+| 21–24 | **M6c Dashboard, Rules page, workflows and AI assistant** *(v2.3/v2.4)*. Workflows and budgets (Step 22). Insights module + `/home`; `/rules` with audited tier and buyer edits; `Assistant` port (Gemini, Claude, fake) + read-only tools + side panel; intake agent; assistant evaluation set. | Insights numbers tested on a fixed dataset; org A cannot see org B; tier edits refused when gapped or overlapping, non-admin → 403, in-flight chains unchanged. Assistant: each tool honours role and org scope; links only to IDs a tool returned; unmatched ₹ figure → warning; AI outage → panel says unavailable, nothing else breaks. Intake: rates never AI-guessed; a drafted request still blocks self-approval. Assistant eval passes in CI (fake model); Gemini report saved. |
+| 25–27 | **M6d Payments, close and India gaps** *(v2.4)*. Simulated payments with risk checks and TDS; bank reconciliation; close cockpit; GSTR-2B matching; photo bills. | TDS and net to the paisa; every payment SoD rule → 403; bank file total = run total; the mock bank statement reconciles 100% by UTR; closed month → 409; 2B matching on the fixture; photo invoice end to end. |
+| 28–29 | **M7 Deploy, rehearse and freeze.** AWS deploy, security review, 3 rehearsals, backup video, tag `demo-final`. | Demo runs cleanly twice in a row on the public URL. Trust page wording matches §13. RDS automated backups confirmed. |
 
 **Stretch goals** (only after M6b passes). *(v2.2: SAP sandbox and Tally moved into M6b.)*
 - Vendor quotes (attach 1–3 quotes, pick one before the PO).
 - New-vendor onboarding request.
-- Dashboard charts.
 - Tally local agent (a small Windows service, so the cloud demo can reach Tally).
 - Further connectors on demand (Sage Intacct, Acumatica, Infor, Workday, Marg).
 
@@ -460,6 +492,8 @@ Roughly $20–40 for the week. After the pitch, snapshot RDS, then stop or delet
 9. *(v2.2)* **Connectors page:** the same PO arrives from Tally (live on this laptop), Business Central (live trial) and SAP (SAP's official sandbox); badges show Live / Sandbox / Simulated for each ERP. One click switches the active ERP.
 10. Trust page, roadmap (Tally local agent, customer test systems for the simulated connectors), the ask.
 
+*(v2.3)* Open on the **dashboard** (₹ at risk blocked, approval time). In step 2, the requester types one sentence and the **intake agent** fills the form; they still submit it, and still cannot approve it. In step 7, ask the **assistant** "why is this invoice on hold?" and click its link to the evidence.
+
 *(v2.1: this is now about 12 minutes; trim step 7 or 8 if the slot is 10.)*
 
 **Say:**
@@ -474,6 +508,7 @@ Roughly $20–40 for the week. After the pitch, snapshot RDS, then stop or delet
 - any savings figure
 - any customer we don't have
 - the "$415M stack" comparison
+- *(v2.3)* "autonomous agents", "the AI approves", or any claim that the assistant acts on its own. Say instead: "AI drafts and explains; people decide."
 
 ---
 
