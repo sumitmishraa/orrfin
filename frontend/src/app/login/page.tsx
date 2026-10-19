@@ -35,7 +35,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await post("/auth/login", { email, password });
-      router.replace("/inbox");
+      router.replace("/home");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed.");
       setBusy(false);

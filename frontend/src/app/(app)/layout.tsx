@@ -7,19 +7,21 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BadgeCheck, Building2, Cable, FileText, Inbox, ListChecks, LogOut, Package, ScrollText, ShieldCheck } from "lucide-react";
+import { BadgeCheck, Building2, Cable, FileText, Gauge, Inbox, ListChecks, LogOut, Package, ScrollText, ShieldCheck, SlidersHorizontal } from "lucide-react";
 
 import { SessionProvider, useMe } from "@/components/session";
 import { post } from "@/lib/api";
 import { formatINR, ROLE_LABELS } from "@/lib/format";
 
 const NAV = [
+  { href: "/home", label: "Home", icon: Gauge },
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/requests", label: "Requests", icon: ListChecks },
   { href: "/invoices", label: "Invoices", icon: FileText },
   { href: "/pos", label: "POs", icon: Package },
   { href: "/vendors", label: "Vendors", icon: Building2 },
   { href: "/audit", label: "Audit", icon: ScrollText },
+  { href: "/rules", label: "Rules", icon: SlidersHorizontal },
   { href: "/trust", label: "Trust", icon: BadgeCheck },
   // Admin only: which ERP Orrfin reads from and drafts into (Step 12). The server enforces it too.
   { href: "/connectors", label: "Connectors", icon: Cable, adminOnly: true },
