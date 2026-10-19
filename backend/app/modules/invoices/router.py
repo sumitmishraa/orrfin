@@ -6,12 +6,13 @@ org check, never from a public URL (§9 "files served through short-lived pre-si
 
 import uuid
 
-from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters.fake_extractor import FAKE_MODEL_ID
-from app.auth.dependencies import CurrentUser, DbSession, require_roles
+from app.auth.dependencies import CurrentUser, DbSession
+from app.errors import NotFound
 from app.config import get_settings
 from app.models import Document, Invoice, MatchResult, User
 from app.modules.audit.service import timeline
@@ -30,7 +31,23 @@ from app.modules.invoices.schemas import (
     TimelineEventOut,
 )
 
-router = APIRouter(prefix="/invoices", tags=["invoices"], dependencies=[Depends(require_roles(*service.VIEW_ROLES))])
+def invoice_access(request: Request, user: CurrentUser, db: DbSession) -> None:
+    """Invoice routes are for the invoice roles. Step 22: someone asked a question about one invoice
+    (often its requester) may also read that invoice and its file, and nothing else."""
+    if user.role in service.VIEW_ROLES:
+        return
+    invoice_id = request.path_params.get("invoice_id")
+    if request.method == "GET" and invoice_id:
+        try:
+            invoice = service.load_invoice(db, user, uuid.UUID(str(invoice_id)))
+        except (ValueError, NotFound):
+            invoice = None
+        if invoice is not None:
+            return
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot do this.")
+
+
+router = APIRouter(prefix="/invoices", tags=["invoices"], dependencies=[Depends(invoice_access)])
 
 # Hooks the later steps fill in (match details, decisions, allowed actions), so this router
 # stays the single place that shapes an invoice for the screen.

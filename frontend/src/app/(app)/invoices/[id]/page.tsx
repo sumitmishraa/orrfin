@@ -13,6 +13,7 @@ import { CircleAlert, CircleCheck, CircleX, Info, Network, RotateCcw, Sparkles, 
 
 import { ErpSyncPanel } from "@/components/erp-sync-panel";
 import { InvoiceStatus } from "@/components/invoice-status";
+import { QuestionsPanel } from "@/components/questions-panel";
 import { ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
@@ -271,6 +272,7 @@ export default function InvoicePage() {
           )}
           {invoice.status === "matching" ? <Loading label="Checking against the PO and receipt…" /> : null}
           {invoice.match ? <MatchPanel invoice={invoice} onChange={setData} /> : null}
+          <QuestionsPanel invoice={invoice} onChange={setData} />
           {invoice.allowed.decide ? <DecisionPanel invoice={invoice} onChange={setData} /> : null}
           {invoice.decisions.length ? (
             <Panel title="Decisions">

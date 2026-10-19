@@ -10,6 +10,7 @@ import { Plus, Trash2 } from "lucide-react";
 
 import { ErrorNotice } from "@/components/page";
 import { Button } from "@/components/ui/button";
+import { BudgetNotice } from "@/components/workflow";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { formatINR, lineTotal, sumMoney } from "@/lib/format";
 import type { Category, RequestDetail, Vendor } from "@/lib/types";
@@ -169,6 +170,8 @@ export function RequestForm({
           </p>
         </div>
       </div>
+      <BudgetNotice query={values.cost_center.trim() && total !== "0.00"
+        ? `cost_center=${encodeURIComponent(values.cost_center.trim())}&amount=${total}` : null} />
 
       <ErrorNotice message={error} />
       <div className="flex gap-2">

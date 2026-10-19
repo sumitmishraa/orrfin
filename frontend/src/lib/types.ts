@@ -77,6 +77,7 @@ export interface RequestLine {
 export interface ApprovalStep {
   step: number;
   required_role: string;
+  step_label?: string | null; // Step 22: a category's named step, e.g. "IT security review"
   approver_id: string | null;
   approver_name: string | null;
   decision: "approve" | "reject" | "return" | null;
@@ -236,6 +237,7 @@ export interface InvoiceDetail extends InvoiceSummary {
   decisions: { decision: string; reason: string | null; reviewer_name: string; at: string }[];
   erp_sync: ErpSync | null; // Step 14: the draft bill in the ERP
   erp_sync_note: string | null; // why an approved invoice was not sent to the ERP
+  exception_tasks?: unknown; // Step 22: questions held on this invoice (components/questions-panel.tsx)
 }
 
 export interface AuditEntity {

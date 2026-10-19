@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import { ErpSyncPanel } from "@/components/erp-sync-panel";
+import { BudgetNotice, RemindersPanel, stepName } from "@/components/workflow";
 import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
 import { RequestForm } from "@/components/request-form";
 import { StatusBadge } from "@/components/status-badge";
@@ -35,7 +36,6 @@ import {
   formatQty,
   lineTotal,
   requestNumber,
-  ROLE_LABELS,
   sumMoney,
 } from "@/lib/format";
 import type { RequestDetail, UserRef, Vendor } from "@/lib/types";
@@ -74,7 +74,7 @@ function StageTimeline({ request }: { request: RequestDetail }) {
     if (st.decision === "approve") state = "done";
     else if (st.decision === "reject" || st.decision === "return") state = "stopped";
     else if (s === "in_approval" && st.step === firstPending) state = "current";
-    stages.push({ label: `Step ${st.step}: ${ROLE_LABELS[st.required_role] ?? st.required_role}`, state });
+    stages.push({ label: `Step ${st.step}: ${stepName(st)}`, state });
   }
   stages.push({ label: "Approved", state: ["approved", "po_drafted", "po_open"].includes(s) ? "done" : "todo" });
 
@@ -254,7 +254,7 @@ function DecisionPanel({ request, onChange }: { request: RequestDetail; onChange
   }
 
   return (
-    <Panel title={`Your decision: step ${step} (${ROLE_LABELS[stepInfo?.required_role ?? ""] ?? stepInfo?.required_role})`}>
+    <Panel title={`Your decision: step ${step} (${stepInfo ? stepName(stepInfo) : ""})`}>
       <div className="flex flex-col gap-3">
         <Field label="Reason (required to reject or return)" htmlFor="reason">
           <Textarea id="reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={2000} />
@@ -420,6 +420,10 @@ export default function RequestPage() {
 
         {request.allowed.assign_buyer ? <AssignPanel request={request} onChange={setData} /> : null}
         {request.allowed.buyer_edit ? <BuyerPanel key={request.updated_at} request={request} onChange={setData} /> : null}
+        {request.status === "in_approval" ? <RemindersPanel requestId={request.id} version={request.updated_at} /> : null}
+        {["with_buyer", "in_approval"].includes(request.status) && request.cost_center ? (
+          <BudgetNotice query={`request_id=${request.id}&v=${encodeURIComponent(request.updated_at)}`} />
+        ) : null}
         {request.allowed.decide_step ? <DecisionPanel request={request} onChange={setData} /> : null}
 
         {request.current_steps.length > 0 ? (
@@ -427,7 +431,7 @@ export default function RequestPage() {
             <ol className="flex flex-col gap-2">
               {request.current_steps.map((s) => (
                 <li key={s.step} className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="font-medium text-heading">Step {s.step}: {ROLE_LABELS[s.required_role] ?? s.required_role}</span>
+                  <span className="font-medium text-heading">Step {s.step}: {stepName(s)}</span>
                   <span className="text-muted-foreground">
                     {s.decision === null ? "· waiting" : `· ${s.decision === "approve" ? "approved" : s.decision === "reject" ? "rejected" : "returned"} by ${s.approver_name} on ${formatDateTime(s.decided_at!)}`}
                   </span>

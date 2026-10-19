@@ -124,6 +124,7 @@ It has two connected workflows:
 | ERP connections *(v2.2)*: which ERP an org uses, its demo label and mode | **Orrfin** | Owns; credentials live in env vars / Secrets Manager, never in the table |
 | Audit trail / control graph | **Orrfin** | Owns; append-only, hash-chained per invoice |
 | Approval tiers and category buyers as edited on the Rules page *(v2.3)* | **Orrfin** | Owns; each edit audited; applies to approval chains started after the edit |
+| Org workflow settings, exception tasks (questions on held invoices), budgets, category extra approvers *(v2.4)* | **Orrfin** | Owns; every change audited |
 | Assistant questions, tool calls and answers *(v2.3)* | **Orrfin** | Owns (`assistant_turns`); a log, not a business record: the assistant changes nothing |
 
 **Conflict rule:** if an ERP record changes after Orrfin has matched against it (its `erp_modified` is newer), the match is marked **stale** and must be re-run before approval.
@@ -241,6 +242,10 @@ Every business table has `id (uuid)`, `org_id (uuid, not null, indexed)`, `creat
 | `jobs` | `kind`, `payload jsonb`, `status`, `attempts`, `max_attempts`, `run_after`, `last_error` |
 | `erp_outbox` | `idempotency_key` (unique), `erp_connection_id` *(v2.2)*, `doc_type` ∈ {purchase_invoice, purchase_order} *(v2.1)*, `invoice_id` (nullable), `request_id` (nullable) — exactly one of the two is set, `state` ∈ {PENDING, SENT, CONFIRMED, FAILED, UNKNOWN}, `erp_doc_name`, `attempts`, `last_error` |
 | `audit_events` | `org_id`, `entity_type`, `entity_id`, `seq`, `actor_id`, `action`, `payload jsonb`, `prev_hash`, `hash`; unique (`entity_id`, `seq`) |
+| `org_settings` *(v2.4)* | `approval_sla_hours` (default 48; a step waiting longer is overdue and can be nudged) |
+| `exception_tasks` *(v2.4)* | `invoice_id`, `asked_by`, `assigned_to`, `question`, `answer`, `status` ∈ {open, answered, closed}; open → invoice approval refused (409); the assignee can never approve that invoice (403) |
+| `budgets` *(v2.4)* | `cost_center`, `fiscal_year` (e.g. 2026-27), `quarter` 1–4 (Apr–Jun = 1), `amount`; warnings only |
+| `categories` + `request_approvals` *(v2.4, additive)* | `extra_approver_id`, `extra_step_label` on categories; `designated_approver_id`, `step_label` on approval steps (copied when a chain starts) |
 | `assistant_turns` *(v2.3)* | `user_id`, `question`, `tool_calls jsonb` (tool names + arguments, not results), `answer`, `model_id`, `prompt_version`, `grounded` (every ₹ figure found in tool results) |
 
 **Database grants:** the application role gets `INSERT, SELECT` on `audit_events`, with no `UPDATE` or `DELETE`. Migrations run as a separate owner role.
@@ -354,6 +359,8 @@ The AI explanation receives **only** the `rule_results` JSON, never the document
   - *(v2.1)* The buyer who completed a request cannot approve it.
   - *(v2.1)* One person cannot approve two steps of the same request.
   - *(v2.1)* Steps run in order; approving step 2 before step 1 is refused.
+  - *(v2.4)* A category's extra step (e.g. IT security review) can be decided only by its named reviewer; no approval limit applies to it, because it reviews fitness, not spend.
+  - *(v2.4)* While an invoice has an open question, it cannot be approved; the person asked can never approve it.
 - **Approval chain (v2.1), from `approval_policies`.** Demo defaults, to be confirmed by the founder:
 
   | Request amount | Steps, in order |

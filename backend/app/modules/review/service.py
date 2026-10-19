@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import Conflict, DomainError, Forbidden, Invalid
-from app.models import Document, FieldEdit, Invoice, ReviewDecision, User
+from app.models import Document, ExceptionTask, FieldEdit, Invoice, ReviewDecision, User
 from app.modules.audit.service import record_event
 from app.modules.erp_outbox.service import queue_bill
 from app.modules.invoices.match_job import current_staleness, start_match
@@ -41,6 +41,15 @@ def decision_refusal(db: Session, user: User, invoice: Invoice, decision: str) -
         return Forbidden("You uploaded this invoice, so someone else must approve it.")
     if db.scalar(select(FieldEdit.id).where(FieldEdit.invoice_id == invoice.id, FieldEdit.edited_by == user.id).limit(1)):
         return Forbidden("You edited this invoice's fields, so someone else must approve it.")
+    # Step 22 exception tasks: an open question holds the invoice, and whoever was asked is a party to it.
+    open_task = db.scalar(select(ExceptionTask).where(ExceptionTask.invoice_id == invoice.id,
+                                                      ExceptionTask.status == "open").limit(1))
+    if open_task is not None:
+        asked = db.get(User, open_task.assigned_to)
+        return Conflict(f"On hold: waiting for {asked.full_name if asked else 'an answer'} to answer a question.")
+    if db.scalar(select(ExceptionTask.id).where(ExceptionTask.invoice_id == invoice.id,
+                                                ExceptionTask.assigned_to == user.id).limit(1)):
+        return Forbidden("You were asked about this invoice, so someone else must approve it.")
     if invoice.total is not None and invoice.total > user.approval_limit:
         return Forbidden(f"₹{invoice.total:,.2f} is above your approval limit of ₹{user.approval_limit:,.2f}.")
     return None
@@ -64,6 +73,9 @@ def decide(db: Session, user: User, invoice_id: uuid.UUID, decision: str, reason
     record_event(db, org_id=invoice.org_id, entity_type="invoice", entity_id=invoice.id, actor_id=user.id,
                  action=f"decision_{decision}",
                  payload={"status": invoice.status, "from": previous, "reason": reason, "total": invoice.total})
+    from app.modules.workflows.service import close_tasks_on_decision  # avoids an import cycle at load time
+
+    close_tasks_on_decision(db, invoice, user.id)
     if decision == "approve":
         # §8 step 1: outbox row + job + audit event in the same transaction as the approval.
         queue_bill(db, invoice, user.id)

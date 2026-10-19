@@ -98,6 +98,54 @@ function PeriodPicker({ value, onChange }: { value: Period; onChange: (p: Period
   );
 }
 
+interface OverdueSection {
+  sla_hours: number;
+  count: number;
+  rows: { request_id: string; number: string; title: string; waiting_on: string; age_hours: string; nudges: number }[];
+}
+
+interface BudgetSection {
+  fiscal_year: string;
+  quarter: number;
+  rows: { cost_center: string; budget: string; committed: string; invoiced: string; pct_used: string | null; over: boolean }[];
+}
+
+/** Step 22 sections: approvals past the time limit, and this quarter's budgets (warnings only). */
+function WorkflowSections({ sections }: { sections: Record<string, unknown> }) {
+  const overdue = sections.overdue_approvals as OverdueSection | undefined;
+  const budgets = sections.budgets as BudgetSection | undefined;
+  if (!overdue && !budgets) return null;
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {overdue ? (
+        <Panel title={`Overdue approvals (waiting over ${overdue.sla_hours} h) · ${overdue.count}`}
+               actions={<Link href="/tasks" className="text-sm text-primary hover:underline">My tasks</Link>}>
+          {overdue.rows.length ? (
+            <ul className="flex flex-col gap-2 text-sm">
+              {overdue.rows.map((r) => (
+                <li key={r.request_id} className="flex flex-wrap items-baseline justify-between gap-2">
+                  <Link href={`/requests/${r.request_id}`} className="font-medium text-primary hover:underline">{r.number} · {r.title}</Link>
+                  <span className="text-error">{hours(r.age_hours)} on {r.waiting_on}{r.nudges ? ` · nudged ${r.nudges}×` : ""}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-sm text-success">No approval is past the time limit.</p>}
+        </Panel>
+      ) : null}
+      {budgets ? (
+        <Panel title={`Budget used · ${budgets.fiscal_year} Q${budgets.quarter}`}
+               actions={<Link href="/rules" className="text-sm text-primary hover:underline">Edit budgets</Link>}>
+          <BarList rows={budgets.rows.map((b) => ({
+            label: `${b.cost_center} · ${formatINR(b.committed)} of ${formatINR(b.budget)}${b.over ? " · over budget" : ""}`,
+            value: b.pct_used ?? "0", display: b.pct_used ? `${b.pct_used}%` : "—",
+          }))} empty="No budgets set for this quarter." color="bg-success" />
+          <p className="mt-3 text-xs text-muted-foreground">Committed = requests in approval or approved. Budgets warn; they never block.</p>
+        </Panel>
+      ) : null}
+    </div>
+  );
+}
+
 function ErpDrafts({ rows }: { rows: { doc_type: string; state: string; count: number }[] }) {
   const sum = (state: string) => rows.filter((r) => r.state === state).reduce((n, r) => n + r.count, 0);
   const failed = sum("FAILED") + sum("UNKNOWN");
@@ -151,6 +199,8 @@ function Dashboard({ data }: { data: InsightsSummary }) {
           </>
         ) : null}
       </StatGrid>
+
+      <WorkflowSections sections={data.sections} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Where approvals are waiting">

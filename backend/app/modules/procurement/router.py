@@ -80,7 +80,7 @@ def _waiting_on(request: PurchaseRequest, steps: list[RequestApproval], names: d
     if request.status == "in_approval":
         pending = next((s for s in steps if s.decision is None), None)
         if pending:
-            return f"Step {pending.step}: {pending.required_role}"
+            return f"Step {pending.step}: {pending.step_label or pending.required_role}"
     return None
 
 
@@ -144,7 +144,9 @@ def _detail(db: Session, user: User, request: PurchaseRequest) -> RequestDetail:
         # "approved" = ready for the PO draft; the outbox moves it to po_drafted, the next sync to po_open.
         ready_for_po=request.status == "approved",
         lines=[LineOut.model_validate(line) for line in service.request_lines(db, request)],
-        current_steps=[StepOut(step=s.step, required_role=s.required_role, approver_id=s.approver_id,
+        current_steps=[StepOut(step=s.step, required_role=s.required_role, step_label=s.step_label,
+                               designated_approver_id=s.designated_approver_id,
+                               approver_id=s.approver_id,
                                approver_name=names.get(s.approver_id), decision=s.decision,
                                reason=s.reason, decided_at=s.decided_at) for s in steps],
         timeline=[TimelineEvent(seq=e.seq, action=e.action, actor_name=names.get(e.actor_id),

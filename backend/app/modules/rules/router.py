@@ -28,8 +28,11 @@ class TiersIn(BaseModel):
     tiers: list[TierIn] = Field(min_length=1, max_length=service.MAX_TIERS)
 
 
-class CategoryBuyerIn(BaseModel):
-    buyer_id: uuid.UUID | None
+class CategoryIn(BaseModel):
+    """Send only the fields to change; a field left out keeps its value."""
+    buyer_id: uuid.UUID | None = None
+    extra_approver_id: uuid.UUID | None = None
+    extra_step_label: str | None = Field(default=None, max_length=80)
 
 
 @router.get("")
@@ -45,8 +48,7 @@ def replace_tiers(body: TiersIn, user: CurrentUser, db: DbSession) -> JSONRespon
 
 
 @router.patch("/categories/{category_id}", dependencies=[admin_only])
-def set_category_buyer(category_id: uuid.UUID, body: CategoryBuyerIn, user: CurrentUser,
-                       db: DbSession) -> JSONResponse:
-    service.set_category_buyer(db, user, category_id, body.buyer_id)
+def update_category(category_id: uuid.UUID, body: CategoryIn, user: CurrentUser, db: DbSession) -> JSONResponse:
+    service.update_category(db, user, category_id, body.model_dump(include=body.model_fields_set))
     db.commit()
     return JSONResponse(to_jsonable(service.overview(db, user)))

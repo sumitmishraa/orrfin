@@ -72,4 +72,5 @@ export const ROLE_LABELS: Record<string, string> = {
   finance: "Finance",
   admin: "Admin",
   manager: "Requester's manager",
+  category_reviewer: "Category reviewer",
 };

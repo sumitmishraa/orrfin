@@ -24,13 +24,18 @@ export interface RulesOverview {
   can_edit: boolean;
   step_roles: string[];
   approval_tiers: Tier[];
-  categories: { id: string; name: string; buyer_id: string | null; buyer_name: string | null }[];
+  categories: Category[];
   segregation_of_duties: Card[];
   matching: { rule_set_version: string; tolerances: Record<string, string>; rules: Card[] };
   [section: string]: unknown;
 }
 
-interface UserOption { id: string; full_name: string }
+interface UserOption { id: string; full_name: string; role?: string }
+
+interface Category {
+  id: string; name: string; buyer_id: string | null; buyer_name: string | null;
+  extra_approver_id: string | null; extra_approver_name: string | null; extra_step_label: string | null;
+}
 
 function IfThen({ card, tone = "navy" }: { card: Card; tone?: "navy" | "locked" }) {
   return (
@@ -76,9 +81,14 @@ function Rules({ data, onChange }: { data: RulesOverview; onChange: (d: RulesOve
         </p>
       </Panel>
 
-      <Panel title="Who completes each category">
+      <Panel title="Who completes each category, and any extra approval">
         <CategoryBuyers data={data} onChange={onChange} />
       </Panel>
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
+        <Panel title="Reminders"><ReminderSettings /></Panel>
+        <Panel title="Budgets this quarter"><BudgetsEditor /></Panel>
+      </div>
 
       <Panel title="Segregation of duties" actions={<Locked />}>
         <ul className="grid gap-3 md:grid-cols-2">{data.segregation_of_duties.map((c) => <IfThen key={c.if} card={c} tone="locked" />)}</ul>
@@ -213,9 +223,141 @@ function CategoryBuyers({ data, onChange }: { data: RulesOverview; onChange: (d:
                 </Select>
               ) : <span className="font-medium">{c.buyer_name ? `${c.buyer_name} completes it` : "The admin queue handles it"}</span>}
             </div>
+            <ExtraStep category={c} canEdit={data.can_edit && me.role === "admin"} onChange={onChange} />
           </li>
         ))}
       </ul>
     </>
+  );
+}
+
+/** Zip's conditional approver: a category can add one named step after the amount tiers. */
+function ExtraStep({ category, canEdit, onChange }: { category: Category; canEdit: boolean; onChange: (d: RulesOverview) => void }) {
+  const { data: people } = useApi<UserOption[]>(canEdit ? "/users" : null);
+  const [approver, setApprover] = useState(category.extra_approver_id ?? "");
+  const [label, setLabel] = useState(category.extra_step_label ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(body: Record<string, string | null>) {
+    setError(null);
+    try {
+      onChange(await patch<RulesOverview>(`/rules/categories/${category.id}`, body));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save.");
+    }
+  }
+
+  if (!canEdit) {
+    return category.extra_approver_id ? (
+      <p className="pl-[3.75rem] text-sm">+ then <b>{category.extra_step_label}</b> by {category.extra_approver_name}</p>
+    ) : null;
+  }
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-2 pl-[3.75rem]">
+      <span className="text-xs text-muted-foreground">Extra approval step (after the amount tiers)</span>
+      <div className="flex flex-wrap gap-2">
+        <Input aria-label={`Extra step name for ${category.name}`} placeholder="e.g. IT security review" className="w-48"
+               value={label} onChange={(e) => setLabel(e.target.value)} />
+        <Select aria-label={`Extra approver for ${category.name}`} className="w-48" value={approver} onChange={(e) => setApprover(e.target.value)}>
+          <option value="">No extra step</option>
+          {(people ?? []).filter((p) => p.role !== "requester").map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+        </Select>
+        <Button size="sm" variant="outline"
+                onClick={() => void save(approver ? { extra_approver_id: approver, extra_step_label: label } : { extra_approver_id: null })}>
+          Save step
+        </Button>
+      </div>
+      <ErrorNotice message={error} />
+    </div>
+  );
+}
+
+function ReminderSettings() {
+  const { data, setData, error } = useApi<{ approval_sla_hours: number; can_edit: boolean }>("/settings/workflow");
+  const [value, setValue] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  if (!data) return <ErrorNotice message={error} />;
+  const shown = value ?? String(data.approval_sla_hours);
+
+  async function save() {
+    setSaveError(null);
+    try {
+      setData(await put<{ approval_sla_hours: number; can_edit: boolean }>("/settings/workflow", { approval_sla_hours: Number(shown) }));
+      setValue(null);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Could not save.");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <ul><IfThen card={{ if: `An approval step waits more than ${data.approval_sla_hours} hours`,
+                          then: "It is marked overdue on My tasks and the dashboard; the requester, buyer or finance can nudge" }} /></ul>
+      {data.can_edit ? (
+        <div className="flex items-center gap-2">
+          <Input aria-label="Overdue after (hours)" inputMode="numeric" className="w-24" value={shown} onChange={(e) => setValue(e.target.value)} />
+          <span>hours</span>
+          <Button size="sm" variant="outline" onClick={() => void save()}>Save</Button>
+        </div>
+      ) : null}
+      <ErrorNotice message={saveError} />
+    </div>
+  );
+}
+
+interface BudgetRows {
+  fiscal_year: string; quarter: number; can_edit: boolean;
+  rows: { cost_center: string; budget: string; committed: string; invoiced: string; remaining: string; pct_used: string | null; over: boolean }[];
+}
+
+function BudgetsEditor() {
+  const me = useMe();
+  const { data, setData, error } = useApi<BudgetRows>(me.role === "requester" ? null : "/budgets");
+  const [center, setCenter] = useState("");
+  const [amount, setAmount] = useState("");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  if (me.role === "requester") return <p className="text-sm text-muted-foreground">Your request form shows the budget for your cost centre.</p>;
+  if (!data) return <ErrorNotice message={error} />;
+  const period = data;
+
+  async function save() {
+    setSaveError(null);
+    try {
+      setData(await put<BudgetRows>("/budgets", { cost_center: center, fiscal_year: period.fiscal_year, quarter: period.quarter, amount }));
+      setCenter("");
+      setAmount("");
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Could not save.");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <p className="text-muted-foreground">{data.fiscal_year} Q{data.quarter}. A request that would go over its budget shows a warning to the requester and approvers; it is never blocked.</p>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead><tr className="text-left text-xs uppercase text-muted-foreground"><th className="py-1">Cost centre</th><th className="text-right">Budget</th><th className="text-right">Committed</th><th className="text-right">Invoiced</th><th className="text-right">Used</th></tr></thead>
+          <tbody>
+            {data.rows.map((r) => (
+              <tr key={r.cost_center} className="border-t border-border">
+                <td className="py-1.5 font-medium">{r.cost_center}</td>
+                <td className="text-right tabular-nums">{formatINR(r.budget)}</td>
+                <td className="text-right tabular-nums">{formatINR(r.committed)}</td>
+                <td className="text-right tabular-nums">{formatINR(r.invoiced)}</td>
+                <td className={`text-right tabular-nums ${r.over ? "font-semibold text-error" : ""}`}>{r.pct_used ? `${r.pct_used}%` : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {data.can_edit ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Input aria-label="Cost centre" placeholder="Cost centre, e.g. IT-OPS" className="w-44" value={center} onChange={(e) => setCenter(e.target.value)} />
+          <Input aria-label="Budget amount" inputMode="decimal" placeholder="Amount, e.g. 500000.00" className="w-44" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <Button size="sm" variant="outline" disabled={!center.trim() || !amount.trim()} onClick={() => void save()}>Set budget</Button>
+        </div>
+      ) : null}
+      <ErrorNotice message={saveError} />
+    </div>
   );
 }

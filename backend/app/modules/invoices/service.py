@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.errors import Conflict, Forbidden, Invalid, NotFound
 from app.jobs import enqueue, handler
-from app.models import Document, Extraction, FieldEdit, Invoice, InvoiceLine, Job, User
+from app.models import Document, ExceptionTask, Extraction, FieldEdit, Invoice, InvoiceLine, Job, User
 from app.modules.audit.service import record_event
 from app.modules.invoices.providers import get_extractor, get_file_store
 from app.modules.invoices.validation import (
@@ -57,9 +57,15 @@ def load_invoice(db: Session, user: User, invoice_id: uuid.UUID, *, lock: bool =
     if lock:
         query = query.with_for_update()
     invoice = db.scalar(query)
-    if invoice is None or user.role not in VIEW_ROLES:
+    if invoice is None or (user.role not in VIEW_ROLES and not _asked_about(db, user, invoice)):
         raise NotFound("Invoice not found.")
     return invoice
+
+
+def _asked_about(db: Session, user: User, invoice: Invoice) -> bool:
+    """Step 22: someone asked a question about an invoice (often its requester) may open that invoice."""
+    return db.scalar(select(ExceptionTask.id).where(ExceptionTask.invoice_id == invoice.id,
+                                                    ExceptionTask.assigned_to == user.id).limit(1)) is not None
 
 
 def invoice_lines(db: Session, invoice: Invoice) -> list[InvoiceLine]:

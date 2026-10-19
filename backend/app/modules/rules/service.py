@@ -50,6 +50,9 @@ SOD_RULES = [
     ("An approval is above the approver's limit", "Refused (403)"),
     ("The person who uploaded or edited an invoice tries to approve it", "Refused (403)"),
     ("The amount of a request changes after approval started", "The approval chain restarts"),
+    ("An invoice has an open question to someone", "Approval waits until they answer (409)"),
+    ("The person asked about an invoice tries to approve it", "Refused (403)"),
+    ("A category's named reviewer step is decided by anyone else", "Refused (403)"),
 ]
 
 
@@ -89,7 +92,9 @@ def overview(db: Session, user: User) -> dict[str, Any]:
         "step_roles": list(STEP_ROLES),
         "approval_tiers": [tier_json(p) for p in _active_tiers(db, user.org_id)],
         "categories": [{"id": c.id, "name": c.name, "buyer_id": c.buyer_id,
-                        "buyer_name": buyers.get(c.buyer_id)} for c in categories],
+                        "buyer_name": buyers.get(c.buyer_id), "extra_approver_id": c.extra_approver_id,
+                        "extra_approver_name": buyers.get(c.extra_approver_id),
+                        "extra_step_label": c.extra_step_label} for c in categories],
         "segregation_of_duties": [{"if": i, "then": t} for i, t in SOD_RULES],
         "matching": {
             "rule_set_version": RULE_SET_VERSION,
@@ -152,18 +157,39 @@ def replace_tiers(db: Session, user: User, tiers: list[TierInput]) -> list[Appro
     return new
 
 
-def set_category_buyer(db: Session, user: User, category_id: uuid.UUID, buyer_id: uuid.UUID | None) -> Category:
+def _active_user(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> User | None:
+    return db.scalar(select(User).where(User.id == user_id, User.org_id == org_id, User.active))
+
+
+def update_category(db: Session, user: User, category_id: uuid.UUID, changes: dict) -> Category:
+    """Change a category's buyer and/or its extra approval step (only the keys given in `changes`)."""
     category = db.scalar(select(Category).where(Category.id == category_id, Category.org_id == user.org_id)
                          .with_for_update())
     if category is None:
         raise NotFound("Category not found.")
-    if buyer_id is not None:
-        buyer = db.scalar(select(User).where(User.id == buyer_id, User.org_id == user.org_id, User.active))
+    if "buyer_id" in changes and changes["buyer_id"] is not None:
+        buyer = _active_user(db, user.org_id, changes["buyer_id"])
         if buyer is None or buyer.role != "buyer":
             raise Invalid("Choose an active user with the buyer role.")
-    old = category.buyer_id
-    category.buyer_id = buyer_id
+    if "extra_approver_id" in changes and changes["extra_approver_id"] is not None:
+        reviewer = _active_user(db, user.org_id, changes["extra_approver_id"])
+        if reviewer is None or reviewer.role == "requester":
+            raise Invalid("Choose an active user who is not only a requester for the extra approval step.")
+        if not (changes.get("extra_step_label") or category.extra_step_label or "").strip():
+            raise Invalid('Name the extra step, e.g. "IT security review".')
+    old = {"buyer_id": category.buyer_id, "extra_approver_id": category.extra_approver_id,
+           "extra_step_label": category.extra_step_label}
+    for field in ("buyer_id", "extra_approver_id"):
+        if field in changes:
+            setattr(category, field, changes[field])
+    if "extra_step_label" in changes:
+        category.extra_step_label = (changes["extra_step_label"] or "").strip() or None
+    if category.extra_approver_id is None:
+        category.extra_step_label = None
+    new = {"buyer_id": category.buyer_id, "extra_approver_id": category.extra_approver_id,
+           "extra_step_label": category.extra_step_label}
+    action = "buyer_changed" if set(changes) == {"buyer_id"} else "category_rules_changed"
     record_event(db, org_id=user.org_id, entity_type="category", entity_id=category.id, actor_id=user.id,
-                 action="buyer_changed", payload={"old_buyer_id": old, "new_buyer_id": buyer_id,
-                                                  "applies_to": "requests submitted after this change"})
+                 action=action, payload={"old": old, "new": new, "new_buyer_id": category.buyer_id,
+                                         "applies_to": "requests submitted or sent for approval after this change"})
     return category

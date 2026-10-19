@@ -21,6 +21,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     Numeric,
     String,
     Text,
@@ -154,6 +155,10 @@ class Category(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     buyer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # Step 22 (additive): an extra named approval step for this category, after the amount tiers,
+    # e.g. "IT security review" for software that touches customer data (Zip's conditional approver).
+    extra_approver_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    extra_step_label: Mapped[str | None] = mapped_column(String(80))
 
 
 class ApprovalPolicy(TimestampMixin, Base):
@@ -225,6 +230,10 @@ class RequestApproval(TimestampMixin, Base):
     decision: Mapped[str | None] = mapped_column(String(10))
     reason: Mapped[str | None] = mapped_column(Text)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Step 22 (additive): for a category step (required_role "category_reviewer"), the named person
+    # and label, copied when the chain starts so later category edits never change a running chain.
+    designated_approver_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    step_label: Mapped[str | None] = mapped_column(String(80))
 
 
 class PurchaseOrder(TimestampMixin, Base):
@@ -488,3 +497,50 @@ class AuditEvent(Base):
     hash: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class OrgSettings(TimestampMixin, Base):
+    """Per-org workflow settings (Step 22). A missing row means the defaults below."""
+    __tablename__ = "org_settings"
+    __table_args__ = (CheckConstraint("approval_sla_hours BETWEEN 1 AND 720", name="sla"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False, unique=True)
+    # An approval step waiting longer than this is "overdue" and can be nudged.
+    approval_sla_hours: Mapped[int] = mapped_column(Integer, nullable=False, server_default="48")
+
+
+class ExceptionTask(TimestampMixin, Base):
+    """A held invoice's question to a named person (Step 22; Zip "hold and ask the requester").
+
+    While a task is open the invoice cannot be approved; the person asked can never approve it.
+    """
+    __tablename__ = "exception_tasks"
+    __table_args__ = (CheckConstraint(_in("status", ("open", "answered", "closed")), name="status"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=False, index=True)
+    asked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    assigned_to: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="open")
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Budget(TimestampMixin, Base):
+    """Budget for one cost centre in one financial-year quarter (Step 22). Warnings only, never a block."""
+    __tablename__ = "budgets"
+    __table_args__ = (
+        UniqueConstraint("org_id", "cost_center", "fiscal_year", "quarter"),
+        CheckConstraint("quarter BETWEEN 1 AND 4", name="quarter"),
+        CheckConstraint("amount >= 0", name="amount"),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    cost_center: Mapped[str] = mapped_column(String(60), nullable=False)
+    fiscal_year: Mapped[str] = mapped_column(String(9), nullable=False)  # e.g. 2026-27
+    quarter: Mapped[int] = mapped_column(SmallInteger, nullable=False)  # 1 = Apr–Jun … 4 = Jan–Mar
+    amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)

@@ -19,6 +19,7 @@ from app.modules.invoices.router import router as invoices_router
 from app.modules.procurement.router import router as procurement_router
 from app.modules.review.router import router as review_router
 from app.modules.rules.router import router as rules_router
+from app.modules.workflows.router import router as workflows_router
 from app.modules.sync.router import router as sync_router
 
 
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(erp_outbox_router)
     app.include_router(insights_router)
     app.include_router(rules_router)
+    app.include_router(workflows_router)
     return app
 
 

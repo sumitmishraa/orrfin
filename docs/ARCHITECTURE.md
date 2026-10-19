@@ -39,6 +39,7 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `backend/app/modules/matching/` | **Pure** §6 rules engine: `engine.py`, `config.py` (version, tolerances, risk weights), template `explain.py` |
 | `backend/app/modules/review/` | Invoice decisions with SoD, re-match, audit list/timeline/verify, Control Graph |
 | `backend/app/modules/insights/` | Control dashboard numbers (`GET /insights/summary`): deterministic SQL, role-scoped like the pages; later modules add sections through `SECTION_PROVIDERS` |
+| `backend/app/modules/workflows/` | My tasks (derived), overdue + nudge, WhatsApp preview text, exception tasks (questions on held invoices), workflow settings, budgets (warnings only); plugs dashboard sections and the invoice questions panel in through hooks |
 | `backend/app/modules/rules/` | Rules page: IF/THEN view of every control; admins edit approval tiers (validated, audited, new chains only) and category buyers |
 | `backend/app/adapters/ai_prompts.py`, `gemini_ai.py`, `claude_ai.py`, `fake_extractor.py`, `local_filestore.py` | Shared AI prompts; Gemini extraction + explanation (working provider, ADR 0005); Claude (Bedrock / Anthropic API); labelled answer-key stand-in; local file store |
 | `backend/app/errors.py` | Business refusals (403/404/409/422) with plain-English reasons |

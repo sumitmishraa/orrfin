@@ -47,6 +47,7 @@ Every demo account uses the password **`Orrfin@Demo2026`**. The people and compa
 | neha.approver@demo.orrfin.ai | Approver | ₹5,00,000 | Approves as Riya's manager |
 | vikram.finance@demo.orrfin.ai | Finance | ₹50,00,000 | |
 | anita.admin@demo.orrfin.ai | Admin | ₹1,00,00,000 | Handles the admin queue |
+| kabir.security@demo.orrfin.ai | Approver (IT security lead) | ₹0 | Decides the "IT security review" step on Software & SaaS requests |
 
 Approval tiers (BUILD_PLAN §9): up to ₹50,000 → manager; up to ₹5,00,000 → manager then finance;
 above → manager, finance, then admin.

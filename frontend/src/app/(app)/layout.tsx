@@ -7,14 +7,16 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BadgeCheck, Building2, Cable, FileText, Gauge, Inbox, ListChecks, LogOut, Package, ScrollText, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { BadgeCheck, Bell, Building2, Cable, FileText, Gauge, Inbox, ListChecks, LogOut, Package, ScrollText, ShieldCheck, SlidersHorizontal } from "lucide-react";
 
 import { SessionProvider, useMe } from "@/components/session";
 import { post } from "@/lib/api";
 import { formatINR, ROLE_LABELS } from "@/lib/format";
+import { useApi } from "@/lib/use-api";
 
 const NAV = [
   { href: "/home", label: "Home", icon: Gauge },
+  { href: "/tasks", label: "My tasks", icon: Bell, badge: true },
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/requests", label: "Requests", icon: ListChecks },
   { href: "/invoices", label: "Invoices", icon: FileText },
@@ -30,6 +32,10 @@ const NAV = [
 function Shell({ children }: { children: ReactNode }) {
   const me = useMe();
   const pathname = usePathname();
+  // Re-read on every navigation, so the count follows actions taken on the pages.
+  const { data: tasks } = useApi<{ overdue: boolean }[]>(`/tasks?at=${encodeURIComponent(pathname)}`);
+  const taskCount = tasks?.length ?? 0;
+  const overdueCount = tasks?.filter((t) => t.overdue).length ?? 0;
 
   async function signOut() {
     await post("/auth/logout").catch(() => undefined);
@@ -46,7 +52,7 @@ function Shell({ children }: { children: ReactNode }) {
           <span className="font-semibold tracking-tight">Orrfin</span>
         </div>
         <nav aria-label="Main" className="flex flex-1 flex-col gap-0.5 px-3 py-2">
-          {NAV.filter((item) => !("adminOnly" in item) || me.role === "admin").map(({ href, label, icon: Icon }) => {
+          {NAV.filter((item) => !("adminOnly" in item) || me.role === "admin").map(({ href, label, icon: Icon, ...item }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
               <Link key={href} href={href} aria-current={active ? "page" : undefined}
@@ -55,6 +61,10 @@ function Shell({ children }: { children: ReactNode }) {
                              : "text-white/75 hover:bg-sidebar-accent hover:text-white"}`}>
                 <Icon className={`size-4 ${active ? "text-cyan" : ""}`} aria-hidden />
                 {label}
+                {"badge" in item && taskCount ? (
+                  <span className={`ml-auto rounded-full px-2 text-xs font-semibold ${overdueCount ? "bg-error text-white" : "bg-cyan text-navy"}`}
+                        aria-label={`${taskCount} tasks${overdueCount ? `, ${overdueCount} overdue` : ""}`}>{taskCount}</span>
+                ) : null}
               </Link>
             );
           })}

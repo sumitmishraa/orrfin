@@ -96,6 +96,8 @@ class LineOut(BaseModel):
 class StepOut(BaseModel):
     step: int
     required_role: str
+    step_label: str | None = None  # Step 22: a category's named step, e.g. "IT security review"
+    designated_approver_id: uuid.UUID | None = None
     approver_id: uuid.UUID | None
     approver_name: str | None
     decision: str | None

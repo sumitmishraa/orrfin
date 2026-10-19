@@ -213,15 +213,37 @@ def _policy_steps(db: Session, org_id: uuid.UUID, amount: Decimal) -> list[str]:
     return list(policy.steps)
 
 
-def _start_chain(db: Session, request: PurchaseRequest) -> list[str]:
-    """Open a new approval round. Earlier rounds stay in the table as history but no longer count."""
-    steps = _policy_steps(db, request.org_id, request.amount)
-    request.approval_round += 1
-    for number, role in enumerate(steps, start=1):
-        db.add(RequestApproval(org_id=request.org_id, request_id=request.id, round=request.approval_round,
-                               step=number, required_role=role))
-    db.flush()
+CATEGORY_STEP = "category_reviewer"
+
+
+def chain_preview(db: Session, org_id: uuid.UUID, category_id: uuid.UUID | None, amount: Decimal) -> list[dict]:
+    """The steps a request of this amount and category would need, in order (no side effects).
+
+    The amount tier comes first; a category with an extra approver adds one named step after it
+    (Step 22, e.g. "IT security review" for software).
+    """
+    steps = [{"role": role, "label": None, "approver_id": None} for role in _policy_steps(db, org_id, amount)]
+    category = db.get(Category, category_id) if category_id else None
+    if category is not None and category.extra_approver_id is not None:
+        steps.append({"role": CATEGORY_STEP, "label": category.extra_step_label or f"{category.name} review",
+                      "approver_id": category.extra_approver_id})
     return steps
+
+
+def _start_chain(db: Session, request: PurchaseRequest) -> list[str]:
+    """Open a new approval round. Earlier rounds stay in the table as history but no longer count.
+
+    The chain is copied into request_approvals here, so later edits to tiers or categories
+    (Rules page) never change a chain that is already running.
+    """
+    steps = chain_preview(db, request.org_id, request.category_id, request.amount)
+    request.approval_round += 1
+    for number, step in enumerate(steps, start=1):
+        db.add(RequestApproval(org_id=request.org_id, request_id=request.id, round=request.approval_round,
+                               step=number, required_role=step["role"], step_label=step["label"],
+                               designated_approver_id=step["approver_id"]))
+    db.flush()
+    return [s["role"] for s in steps]
 
 
 def buyer_update(db: Session, user: User, request_id: uuid.UUID, *, vendor_id: uuid.UUID | None,
@@ -306,6 +328,12 @@ def decision_refusal(db: Session, user: User, request: PurchaseRequest, steps: l
         requester = db.get(User, request.requested_by)
         if requester.manager_id != user.id:
             return Forbidden("This step needs the requester's manager.")
+    elif step.required_role == CATEGORY_STEP:
+        if user.id != step.designated_approver_id:
+            named = db.get(User, step.designated_approver_id)
+            return Forbidden(f"This step ({step.step_label}) needs {named.full_name if named else 'its named reviewer'}.")
+        # A category review (e.g. security) checks fitness, not spending, so no approval limit applies.
+        return None
     elif user.role != step.required_role:
         return Forbidden(f"This step needs the {step.required_role} role.")
     if decision == "approve" and request.amount > user.approval_limit:
