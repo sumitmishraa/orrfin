@@ -4,11 +4,12 @@
  * Logged-in shell (PROMPTS Step 3): navy sidebar with navigation, the user's name and role,
  * and sign-out. Every page inside (app)/ gets the session through useMe().
  */
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BadgeCheck, Bell, Building2, Cable, FileText, Gauge, Inbox, ListChecks, LogOut, Package, ScrollText, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { BadgeCheck, Bell, Building2, Cable, FileText, Gauge, Inbox, ListChecks, LogOut, Package, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles } from "lucide-react";
 
+import { AssistantPanel } from "@/components/assistant-panel";
 import { SessionProvider, useMe } from "@/components/session";
 import { post } from "@/lib/api";
 import { formatINR, ROLE_LABELS } from "@/lib/format";
@@ -32,6 +33,7 @@ const NAV = [
 function Shell({ children }: { children: ReactNode }) {
   const me = useMe();
   const pathname = usePathname();
+  const [assistantOpen, setAssistantOpen] = useState(false);
   // Re-read on every navigation, so the count follows actions taken on the pages.
   const { data: tasks } = useApi<{ overdue: boolean }[]>(`/tasks?at=${encodeURIComponent(pathname)}`);
   const taskCount = tasks?.length ?? 0;
@@ -69,6 +71,12 @@ function Shell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
+        <div className="px-3 pb-3">
+          <button type="button" onClick={() => setAssistantOpen(true)}
+                  className="flex w-full items-center gap-2 rounded-lg bg-cyan/15 px-3 py-2 text-sm font-medium text-cyan hover:bg-cyan/25">
+            <Sparkles className="size-4" aria-hidden /> Ask Orrfin
+          </button>
+        </div>
         <div className="border-t border-sidebar-border px-4 py-4">
           <p className="truncate text-sm font-medium">{me.full_name}</p>
           <p className="text-xs text-cyan">
@@ -81,6 +89,7 @@ function Shell({ children }: { children: ReactNode }) {
           </button>
         </div>
       </aside>
+      {assistantOpen ? <AssistantPanel onClose={() => setAssistantOpen(false)} /> : null}
       <main className="min-w-0 flex-1 px-8 py-8">
         <div className="mx-auto max-w-6xl">{children}</div>
       </main>

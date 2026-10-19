@@ -544,3 +544,19 @@ class Budget(TimestampMixin, Base):
     fiscal_year: Mapped[str] = mapped_column(String(9), nullable=False)  # e.g. 2026-27
     quarter: Mapped[int] = mapped_column(SmallInteger, nullable=False)  # 1 = Apr–Jun … 4 = Jan–Mar
     amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+
+
+class AssistantTurn(TimestampMixin, Base):
+    """One assistant question and answer (Step 23, ADR 0007). A log, not an audit event: asking changes nothing."""
+    __tablename__ = "assistant_turns"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    # Tool names and arguments only, not results: enough to replay what the assistant looked at.
+    tool_calls: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    answer: Mapped[str | None] = mapped_column(Text)
+    model_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    grounded: Mapped[bool | None] = mapped_column(Boolean)  # every ₹ figure found in the tool results
+    error: Mapped[str | None] = mapped_column(Text)

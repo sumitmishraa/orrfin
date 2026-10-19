@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from app.auth.router import router as auth_router
 from app.config import get_settings
 from app.errors import DomainError
+from app.modules.assistant.router import router as assistant_router
 from app.modules.connectors.router import router as connectors_router
 from app.modules.erp_outbox.router import router as erp_outbox_router
 from app.modules.insights.router import router as insights_router
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(insights_router)
     app.include_router(rules_router)
     app.include_router(workflows_router)
+    app.include_router(assistant_router)
     return app
 
 

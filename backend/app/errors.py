@@ -27,6 +27,11 @@ class Conflict(DomainError):
     status_code = 409
 
 
+class TooManyRequests(DomainError):
+    """A rate limit, e.g. the assistant's questions per hour."""
+    status_code = 429
+
+
 class Invalid(DomainError):
     """The input breaks a rule (e.g. a rejection without a reason)."""
     status_code = 422

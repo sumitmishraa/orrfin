@@ -3,7 +3,7 @@
  * The wording follows §13 exactly; it must never claim "fully compliant" or "no data leaves India".
  */
 import Link from "next/link";
-import { Bot, Database, FileLock2, ScrollText, ShieldCheck, UserCheck } from "lucide-react";
+import { Bot, Database, FileLock2, ScrollText, ShieldCheck, Sparkles, UserCheck } from "lucide-react";
 
 import { PageHeader, Panel } from "@/components/page";
 
@@ -15,6 +15,10 @@ const ITEMS = [
   {
     icon: Bot, title: "Where the AI runs",
     body: "Document AI runs on Google Gemini in this prototype (AWS Bedrock is the target); inference may be processed outside India, and before pilots we will choose a routing that meets each customer's requirement. The AI only reads invoices and explains results. It never decides a match: fixed, versioned rules do.",
+  },
+  {
+    icon: Sparkles, title: "The Orrfin Assistant reads; people decide",
+    body: "The assistant answers questions with read-only lookups that run with your own permissions, so it sees only what you could open. It cannot approve, reject, submit, pay or change anything. It links only to records Orrfin returned, removes any web address, and warns when a rupee figure in its answer is not in Orrfin's records. It runs on the same AI provider as invoice reading, and every question is logged.",
   },
   {
     icon: Database, title: "Read-only from the ERP",
