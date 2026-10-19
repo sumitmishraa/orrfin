@@ -96,3 +96,14 @@ def test_closing_a_month_locks_approvals_until_an_admin_reopens_it(client, db, t
     actions = db.scalars(select(AuditEvent.action).where(AuditEvent.entity_type == "close_period", AuditEvent.org_id == team.org.id).order_by(AuditEvent.created_at)).all()
     assert actions == ["month_closed", "month_reopened"]
     assert client.post("/close/2099-01/close", json={"notes": {}}).status_code == 422  # not started yet
+
+
+def test_the_dashboard_shows_this_months_close_progress_to_finance_only(client, team, factory):  # noqa: F811
+    from app.modules.close.service import current_period
+
+    login(client, team.reviewer)
+    section = client.get("/insights/summary", params={"period": "all"}).json()["sections"]["close"]
+    assert section["period"] == current_period() and section["status"] == "open"
+    assert 0 <= section["done"] <= section["total"] and section["total"] >= 4
+    login(client, factory.user(team.org, "requester"))
+    assert "close" not in client.get("/insights/summary", params={"period": "all"}).json()["sections"]

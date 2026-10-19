@@ -41,15 +41,19 @@ class ClaudeExtractor:
         self.client = client
         self.model_id = model_id
 
-    def extract(self, pdf: bytes) -> ExtractionResult:
+    def extract(self, pdf: bytes, mime_type: str = "application/pdf") -> ExtractionResult:
+        encoded = base64.standard_b64encode(pdf).decode("ascii")
+        # A PDF goes in as a document block; a photo of a paper bill (Step 27) as an image block.
+        source = ({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": encoded}}
+                  if mime_type == "application/pdf" else
+                  {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": encoded}})
         try:
             response = self.client.messages.parse(
                 model=self.model_id,
                 max_tokens=16000,
                 system=EXTRACT_SYSTEM,
                 messages=[{"role": "user", "content": [
-                    {"type": "document", "source": {"type": "base64", "media_type": "application/pdf",
-                                                    "data": base64.standard_b64encode(pdf).decode("ascii")}},
+                    source,
                     {"type": "text", "text": EXTRACT_USER},
                 ]}],
                 output_format=ExtractedInvoice,

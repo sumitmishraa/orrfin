@@ -265,7 +265,14 @@ export default function InvoicePage() {
         </p>
       ) : null}
       <div className="grid gap-6 xl:grid-cols-2">
-        <iframe title="Invoice PDF" src={`/api/invoices/${invoice.id}/file`} className="h-[80vh] w-full rounded-xl border border-border bg-white" />
+        {/\.(png|jpe?g)$/i.test(invoice.filename) ? (
+          // Step 27: a photo of a paper or handwritten bill.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={`/api/invoices/${invoice.id}/file`} alt={`Photo of invoice ${invoice.invoice_no ?? invoice.filename}`}
+               className="max-h-[80vh] w-full rounded-xl border border-border bg-white object-contain" />
+        ) : (
+          <iframe title="Invoice PDF" src={`/api/invoices/${invoice.id}/file`} className="h-[80vh] w-full rounded-xl border border-border bg-white" />
+        )}
         <div className="flex flex-col gap-6">
           {invoice.status === "extracting" ? <Loading label="Reading the invoice…" /> : (
             <ReviewForm key={invoice.timeline.length} invoice={invoice} onChange={setData} />

@@ -17,7 +17,8 @@ from app.config import REPO_ROOT, get_settings
 from app.ports.extractor import Extractor
 from app.ports.filestore import FileStore
 
-ANSWER_KEY_DIRS = [REPO_ROOT / "evals" / "extraction", REPO_ROOT / "seed" / "invoices"]
+ANSWER_KEY_DIRS = [REPO_ROOT / "evals" / "extraction", REPO_ROOT / "evals" / "extraction-photos",
+                   REPO_ROOT / "seed" / "invoices"]
 _override: Extractor | None = None
 
 

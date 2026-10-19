@@ -206,3 +206,14 @@ def view(db: Session, user: User, period: str) -> dict[str, Any]:
 
 def current_period() -> str:
     return period_of(datetime.now(IST).date())
+
+
+def dashboard_section(db: Session, scope: Any, start: Any) -> dict[str, Any] | None:
+    """This month's close progress for the dashboard (insights SECTION_PROVIDERS); finance and admin only."""
+    if scope.role not in CLOSERS:
+        return None
+    period = current_period()
+    items = checklist(db, scope.org_id, period)
+    row = _period_row(db, scope.org_id, period)
+    return {"period": period, "status": row.status if row else "open",
+            "done": sum(1 for i in items if i["ok"]), "total": len(items)}

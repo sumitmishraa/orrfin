@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.auth.dependencies import CurrentUser, DbSession
 from app.modules.audit.service import to_jsonable
 from app.modules.close import service
+from app.modules.insights.service import SECTION_PROVIDERS
 
 router = APIRouter(prefix="/close", tags=["close"])
 
@@ -48,3 +49,6 @@ def reopen(period: str, body: ReopenIn, user: CurrentUser, db: DbSession) -> JSO
     service.reopen(db, user, period, body.reason)
     db.commit()
     return JSONResponse(to_jsonable(service.view(db, user, period)))
+
+
+SECTION_PROVIDERS["close"] = service.dashboard_section

@@ -49,3 +49,17 @@ Every answer key has two parts:
 ## Demo users and requests (Steps 3 and 5)
 
 The five demo logins and the approval tiers are in the [README](../README.md#demo-logins-synthetic-local-demo-only). `seed/invoices/INV-SAMPLE-001.pdf` is the single Step 2 Bedrock-spike invoice.
+
+## GSTR-2B and photo bills (`seed/gstr2b/`, `evals/extraction-photos/`, Step 27)
+
+All synthetic. Upload `seed/gstr2b/2026-09.json` on the GSTR-2B page after invoices 01, 02 and 03 are matched:
+
+| Line | Result |
+|---|---|
+| SOS/2026-27/0201 (Shreeji) | Matched |
+| SPS/26-27/0412 (Sahyadri) | Amount differs (2B value is not the invoice total) |
+| KITS/INV/2026/0877 (in Orrfin, not in 2B) | ITC at risk ₹24,336.00; paying it needs the approver's reason |
+| DFS/2026/1190 (Deccan Facility) | In 2B, not in Orrfin |
+
+`evals/extraction-photos/13-photo-printed.png` and `14-photo-handwritten.png` are rendered, tilted, noisy photos of a Shreeji bill against PO-1 (numbers SOS/2026-27/0231 and /0232), each with an answer key. Regenerate with `backend\.venv\Scripts\python backend\scripts\make_photo_invoices.py`. Real handwriting accuracy is measured on the founder's own samples, not assumed.
+

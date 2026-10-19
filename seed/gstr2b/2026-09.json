@@ -1,0 +1,25 @@
+{
+  "_note": "SYNTHETIC GSTR-2B for the Orrfin demo (Step 27). Fictional suppliers and GSTINs, GSTN JSON shape. Not a real return.",
+  "data": {
+    "gstin": "27AAACO1234D1ZX",
+    "rtnprd": "092026",
+    "version": "1.0",
+    "gendt": "14-10-2026",
+    "docdata": {
+      "b2b": [
+        {"ctin": "27AABCS4821K1Z9", "trdnm": "Shreeji Office Supplies Pvt Ltd", "supfildt": "11-10-2026", "supprd": "092026",
+         "inv": [{"inum": "SOS/2026-27/0201", "typ": "R", "dt": "10-09-2026", "val": 54870.00, "pos": "27", "rev": "N",
+                  "itcavl": "Y", "rsn": "", "diffprcnt": 1, "srctyp": "e-Invoice", "irn": "",
+                  "txval": 46500.00, "igst": 0, "cgst": 4185.00, "sgst": 4185.00, "cess": 0}]},
+        {"ctin": "27ABNPS1204H1ZO", "trdnm": "Sahyadri Print & Stationery", "supfildt": "10-10-2026", "supprd": "092026",
+         "inv": [{"inum": "SPS/26-27/0412", "typ": "R", "dt": "18-09-2026", "val": 15340.00, "pos": "27", "rev": "N",
+                  "itcavl": "Y", "rsn": "", "diffprcnt": 1, "srctyp": "", "irn": "",
+                  "txval": 13000.00, "igst": 0, "cgst": 1170.00, "sgst": 1170.00, "cess": 0}]},
+        {"ctin": "27AAECD9082R1ZS", "trdnm": "Deccan Facility Services Pvt Ltd", "supfildt": "09-10-2026", "supprd": "092026",
+         "inv": [{"inum": "DFS/2026/1190", "typ": "R", "dt": "30-09-2026", "val": 147500.00, "pos": "27", "rev": "N",
+                  "itcavl": "Y", "rsn": "", "diffprcnt": 1, "srctyp": "", "irn": "",
+                  "txval": 125000.00, "igst": 0, "cgst": 11250.00, "sgst": 11250.00, "cess": 0}]}
+      ]
+    }
+  }
+}

@@ -42,7 +42,7 @@ function UploadButton() {
 
   return (
     <div className="flex flex-col items-end gap-2">
-      <input ref={input} type="file" accept="application/pdf" className="sr-only" aria-label="Invoice PDF"
+      <input ref={input} type="file" accept="application/pdf,image/jpeg,image/png" className="sr-only" aria-label="Invoice PDF"
              onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
       <Button size="lg" disabled={busy} onClick={() => input.current?.click()}>
         <Upload aria-hidden /> {busy ? "Uploading…" : "Upload invoice PDF"}

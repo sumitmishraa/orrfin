@@ -26,12 +26,12 @@ class FakeExtractor:
     def __init__(self, answer_dirs: list[Path]):
         self._by_sha: dict[str, dict] = {}
         for folder in answer_dirs:
-            for pdf in folder.glob("*.pdf"):
+            for pdf in [*folder.glob("*.pdf"), *folder.glob("*.png"), *folder.glob("*.jpg")]:
                 key = next((p for p in (pdf.with_suffix(".json"), pdf.with_suffix(".expected.json")) if p.exists()), None)
                 if key:
                     self._by_sha[hashlib.sha256(pdf.read_bytes()).hexdigest()] = _key_from_file(key)
 
-    def extract(self, pdf: bytes) -> ExtractionResult:
+    def extract(self, pdf: bytes, mime_type: str = "application/pdf") -> ExtractionResult:
         key = self._by_sha.get(hashlib.sha256(pdf).hexdigest())
         if key is None:
             raise ExtractorUnavailable(

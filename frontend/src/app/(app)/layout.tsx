@@ -7,7 +7,7 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeftRight, BadgeCheck, Bell, CalendarCheck, Building2, Cable, FileText, Gauge, Inbox, ListChecks, LogOut, Package, ScrollText, Landmark, ShieldCheck, SlidersHorizontal, Sparkles } from "lucide-react";
+import { ArrowLeftRight, BadgeCheck, Bell, CalendarCheck, Building2, Cable, FileText, Gauge, Inbox, ListChecks, LogOut, Package, Receipt, ScrollText, Landmark, ShieldCheck, SlidersHorizontal, Sparkles } from "lucide-react";
 
 import { AssistantPanel } from "@/components/assistant-panel";
 import { SessionProvider, useMe } from "@/components/session";
@@ -25,6 +25,7 @@ const NAV = [
   { href: "/payments", label: "Payments", icon: Landmark, financeOnly: true },
   { href: "/bank", label: "Bank", icon: ArrowLeftRight, financeOnly: true },
   { href: "/close", label: "Month-end close", icon: CalendarCheck, financeOnly: true },
+  { href: "/gst", label: "GSTR-2B", icon: Receipt, financeOnly: true },
   { href: "/vendors", label: "Vendors", icon: Building2 },
   { href: "/audit", label: "Audit", icon: ScrollText },
   { href: "/rules", label: "Rules", icon: SlidersHorizontal },

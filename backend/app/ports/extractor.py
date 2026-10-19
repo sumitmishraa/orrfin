@@ -60,4 +60,6 @@ class ExtractorUnavailable(Exception):
 
 
 class Extractor(Protocol):
-    def extract(self, pdf: bytes) -> ExtractionResult: ...
+    def extract(self, data: bytes, mime_type: str = "application/pdf") -> ExtractionResult:
+        """Read a PDF, or a JPEG/PNG photo of a paper or handwritten bill (Step 27)."""
+        ...

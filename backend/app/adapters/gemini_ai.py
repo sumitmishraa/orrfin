@@ -46,11 +46,11 @@ class GeminiExtractor:
         self.client = client
         self.model_id = model_id
 
-    def extract(self, pdf: bytes) -> ExtractionResult:
+    def extract(self, pdf: bytes, mime_type: str = "application/pdf") -> ExtractionResult:
         try:
             response = self.client.models.generate_content(
                 model=self.model_id,
-                contents=[types.Part.from_bytes(data=pdf, mime_type="application/pdf"), EXTRACT_USER],
+                contents=[types.Part.from_bytes(data=pdf, mime_type=mime_type), EXTRACT_USER],
                 config=types.GenerateContentConfig(
                     system_instruction=EXTRACT_SYSTEM,
                     response_mime_type="application/json",

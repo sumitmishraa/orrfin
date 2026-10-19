@@ -36,6 +36,9 @@ from app.ports.extractor import ExtractionResult
 
 VIEW_ROLES = ("buyer", "approver", "finance", "admin")
 WRITE_ROLES = ("finance", "admin")
+# Accepted uploads and their file signatures (Step 27: photos of paper and handwritten bills).
+UPLOAD_TYPES = {"application/pdf": b"%PDF-", "image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG\r\n\x1a\n"}
+EXTENSIONS = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png"}
 EDITABLE_STATUSES = ("needs_review", "manual_entry", "correction_requested")
 TEXT_FIELDS = ("vendor_name", "vendor_gstin", "buyer_gstin", "invoice_no", "po_reference", "place_of_supply")
 MONEY_FIELDS = ("subtotal", "cgst", "sgst", "igst", "total")
@@ -100,20 +103,22 @@ def _derive_keys(invoice: Invoice) -> None:
 # --- Upload --------------------------------------------------------------------------------------
 
 def upload(db: Session, user: User, *, filename: str, content_type: str, data: bytes) -> Invoice:
-    """Store the PDF, create the invoice and queue its extraction, in one transaction (caller commits)."""
+    """Store the file, create the invoice and queue its extraction, in one transaction (caller commits)."""
     _require_writer(user)
     if len(data) > get_settings().max_upload_bytes:
         raise Invalid("The file is larger than 10 MB.")
-    # §9: PDF only, content type checked; the first bytes must really be a PDF, whatever the name says.
-    if content_type != "application/pdf" or not data.startswith(b"%PDF-"):
-        raise Invalid("Only PDF invoices can be uploaded.")
+    # §9 + Step 27: a PDF, or a photo of a paper bill (JPEG/PNG). The first bytes must really be that type,
+    # whatever the name or the declared type says.
+    kind = next((k for k, magic in UPLOAD_TYPES.items() if content_type == k and data.startswith(magic)), None)
+    if kind is None:
+        raise Invalid("Upload a PDF, or a JPEG/PNG photo of the bill.")
     sha256 = hashlib.sha256(data).hexdigest()
     existing = db.scalar(select(Invoice.id).join(Document, Document.id == Invoice.document_id)
                          .where(Document.org_id == user.org_id, Document.sha256 == sha256))
     if existing:
         # §6 rule 9: the same file uploaded again is a blocking duplicate.
         raise Conflict(f"This exact file was already uploaded (invoice {existing}). Duplicate blocked.")
-    key = f"{user.org_id}/{sha256}.pdf"
+    key = f"{user.org_id}/{sha256}.{EXTENSIONS[kind]}"
     get_file_store().put(key, data)
     document = Document(org_id=user.org_id, s3_key=key, sha256=sha256, filename=filename[:255] or "invoice.pdf",
                         content_type=content_type, size_bytes=len(data), uploaded_by=user.id)
@@ -174,7 +179,7 @@ def run_extraction(db: Session, job: Job) -> dict[str, Any]:
         return {"skipped": invoice.status if invoice else "missing"}
     document = db.get(Document, invoice.document_id)
     started = datetime.now(UTC)
-    result = get_extractor().extract(get_file_store().get(document.s3_key))
+    result = get_extractor().extract(get_file_store().get(document.s3_key), mime_type=document.content_type)
     _apply_extraction(db, invoice, result, started)
     return {"model_id": result.model_id, "lines": len(result.invoice.lines)}
 

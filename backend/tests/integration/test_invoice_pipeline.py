@@ -105,7 +105,7 @@ def test_the_pdf_is_served_to_its_own_org(client, factory):
 
 
 class _AlwaysDown:
-    def extract(self, pdf: bytes):
+    def extract(self, pdf: bytes, mime_type: str = "application/pdf"):
         raise ExtractorUnavailable("ThrottlingException: simulated Bedrock outage")
 
 

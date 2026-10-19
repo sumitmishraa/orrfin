@@ -150,7 +150,7 @@ def get_invoice(invoice_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Invo
 def get_invoice_file(invoice_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Response:
     invoice = service.load_invoice(db, user, invoice_id)
     document = db.get(Document, invoice.document_id)
-    return Response(get_file_store().get(document.s3_key), media_type="application/pdf",
+    return Response(get_file_store().get(document.s3_key), media_type=document.content_type or "application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{document.filename}"',
                              "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 

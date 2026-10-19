@@ -40,6 +40,9 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `backend/app/modules/review/` | Invoice decisions with SoD, re-match, audit list/timeline/verify, Control Graph |
 | `backend/app/modules/insights/` | Control dashboard numbers (`GET /insights/summary`): deterministic SQL, role-scoped like the pages; later modules add sections through `SECTION_PROVIDERS` |
 | `backend/app/modules/payments/` | Simulated payments (ADR 0008): pure `tds.py` (§6c) and `risk.py` (§6b); `service.py` profiles with maker-checker, runs with SoD, bank file, mock bank job `bank_settle` (idempotent, writes a statement CSV) |
+| `backend/app/modules/bank/` | Bank reconciliation: pure `reconcile.py` (UTR → matched; amount + date ±3 days + vendor → suggested), statement CSV import, accept/unmatch |
+| `backend/app/modules/close/` | Month-end close cockpit: live checklist (+ `EXTRA_CHECKS` hook), received-not-invoiced report (no journal), close/reopen, period lock; dashboard section `close` |
+| `backend/app/modules/gst/` | GSTR-2B ITC matching (no filing): pure `match.py` (GSTIN + normalised invoice no + fiscal year, ±₹1), JSON import, `/gstr2b`; registers the payment hold, the close check and the dashboard section `gst` |
 | `backend/app/modules/assistant/` | Orrfin Assistant (ADR 0007): `tools.py` read-only tools bound to the user (reuse the pages' loaders), `service.py` links/₹ check/rate limit/log, `POST /assistant/ask`; port `ports/assistant.py`, adapters `gemini_assistant.py`, `claude_assistant.py`, `fake_assistant.py` |
 | `backend/app/modules/workflows/` | My tasks (derived), overdue + nudge, WhatsApp preview text, exception tasks (questions on held invoices), workflow settings, budgets (warnings only); plugs dashboard sections and the invoice questions panel in through hooks |
 | `backend/app/modules/rules/` | Rules page: IF/THEN view of every control; admins edit approval tiers (validated, audited, new chains only) and category buyers |

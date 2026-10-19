@@ -147,6 +147,38 @@ function WorkflowSections({ sections }: { sections: Record<string, unknown> }) {
   );
 }
 
+interface PaymentsSection { due: string; in_runs: string; paid: string; failed: string; held_by_risk: string; tds_deducted: string }
+interface GstSection { periods: string[]; itc_at_risk: string; missing_in_2b: number; amount_differs: number }
+interface CloseSection { period: string; status: string; done: number; total: number }
+
+/** Steps 25-27 sections: simulated payments, GSTR-2B credit at risk, and this month's close progress. */
+function MoneySections({ sections }: { sections: Record<string, unknown> }) {
+  const payments = sections.payments as PaymentsSection | undefined;
+  const gst = sections.gst as GstSection | undefined;
+  const close = sections.close as CloseSection | undefined;
+  if (!payments && !gst && !close) return null;
+  return (
+    <StatGrid>
+      {payments ? (
+        <>
+          <StatTile label="Approved, still to pay" value={formatINR(payments.due)} sub={<Link href="/payments" className="text-primary hover:underline">Payments</Link>} />
+          <StatTile label="Held by payment-risk checks" value={formatINR(payments.held_by_risk)} tone={Number(payments.held_by_risk) ? "warn" : "good"} />
+          <StatTile label="Paid (simulated)" value={formatINR(payments.paid)} sub={`TDS deducted ${formatINR(payments.tds_deducted)}`} />
+        </>
+      ) : null}
+      {gst ? (
+        <StatTile label="GST credit at risk (not in GSTR-2B)" value={formatINR(gst.itc_at_risk)} tone={Number(gst.itc_at_risk) ? "bad" : "good"}
+                  sub={<Link href="/gst" className="text-primary hover:underline">{gst.missing_in_2b} missing · {gst.amount_differs} differ</Link>} />
+      ) : null}
+      {close ? (
+        <StatTile label={`Month-end close · ${close.period}`} value={close.status === "closed" ? "Closed" : `${close.done} of ${close.total} checks`}
+                  tone={close.status === "closed" || close.done === close.total ? "good" : "warn"}
+                  sub={<Link href="/close" className="text-primary hover:underline">Open the close</Link>} />
+      ) : null}
+    </StatGrid>
+  );
+}
+
 /** DualEntry-style "what changed": numbers computed by Orrfin, worded by AI (or a template). */
 function WhatChanged({ role }: { role: string }) {
   const [period, setPeriod] = useState<"month" | "quarter">("month");
@@ -243,6 +275,7 @@ function Dashboard({ data }: { data: InsightsSummary }) {
 
       <WhatChanged role={data.role} />
       <WorkflowSections sections={data.sections} />
+      <MoneySections sections={data.sections} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Where approvals are waiting">
