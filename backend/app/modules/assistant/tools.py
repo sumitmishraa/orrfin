@@ -38,6 +38,7 @@ from app.modules.procurement import service as procurement
 from app.modules.review import service as review
 from app.modules.rules import service as rules
 from app.modules.workflows import budgets
+from app.modules.workflows import router as _workflow_sections  # noqa: F401  (registers dashboard sections)
 from app.modules.workflows import service as workflows
 from app.ports.assistant import ToolSpec
 
@@ -259,6 +260,15 @@ class Tools:
                 "events": [{"seq": e["seq"], "action": e["action"], "by": e.get("actor_name"), "at": e["at"]}
                            for e in events]}
 
+    def payment_status(self, _: dict) -> dict:
+        from app.modules.payments import service as payments  # payments imports nothing from the assistant
+
+        if self.user.role not in payments.PAYMENT_ROLES:
+            return {"note": "Only finance or an admin can see payments."}
+        return {"runs": [{**r, "ref": None} for r in payments.runs_view(self.db, self.user)[:10]],
+                "due": payments.eligible_invoices(self.db, self.user)[:15],
+                "note": "Payments are simulated: a mock bank pays approved runs; no real money moves."}
+
     def list_rules(self, _: dict) -> dict:
         data = rules.overview(self.db, self.user)
         data["categories"] = [{k: v for k, v in c.items() if not k.endswith("_id") and k != "id"}
@@ -292,6 +302,8 @@ _SPECS: list[tuple[str, str, dict[str, Any]]] = [
      "Requesters pass their cost_center.", {"cost_center": _TEXT}),
     ("get_audit_trail", "The tamper-evident history of a request (PR-0002) or an invoice (its number), and "
      "whether the hash chain is intact.", {"record": _TEXT}),
+    ("payment_status", "Simulated payment runs (status, net, TDS, who prepared and approved) and approved "
+     "invoices still to pay. Finance and admins only.", {}),
     ("list_rules", "Every control: approval tiers, category buyers and extra reviewers, segregation of duties, "
      "matching rules and tolerances, the overdue time limit.", {}),
 ]

@@ -123,7 +123,8 @@ def _replace_lines(db: Session, request: PurchaseRequest, lines: list[LineInput]
 
 def create_request(db: Session, user: User, *, category_id: uuid.UUID, title: str, justification: str,
                    cost_center: str, needed_by: date | None, lines: list[LineInput],
-                   suggested_vendor_id: uuid.UUID | None = None) -> PurchaseRequest:
+                   suggested_vendor_id: uuid.UUID | None = None,
+                   ai_draft: dict | None = None) -> PurchaseRequest:
     _category(db, user, category_id)
     if suggested_vendor_id and db.scalar(select(Vendor.id).where(
             Vendor.id == suggested_vendor_id, Vendor.org_id == user.org_id)) is None:
@@ -138,7 +139,12 @@ def create_request(db: Session, user: User, *, category_id: uuid.UUID, title: st
     db.add(request)
     db.flush()
     _replace_lines(db, request, lines)
-    _audit(db, request, user, "created", {"amount": request.amount})
+    payload = {"amount": request.amount}
+    if ai_draft:
+        # Step 24: the intake agent pre-filled the form; the requester checked and submitted it.
+        payload.update({"drafted_by_ai": True, "model_id": ai_draft.get("model_id"),
+                        "prompt_version": ai_draft.get("prompt_version")})
+    _audit(db, request, user, "created", payload)
     return request
 
 

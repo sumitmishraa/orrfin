@@ -246,6 +246,8 @@ Every business table has `id (uuid)`, `org_id (uuid, not null, indexed)`, `creat
 | `exception_tasks` *(v2.4)* | `invoice_id`, `asked_by`, `assigned_to`, `question`, `answer`, `status` ∈ {open, answered, closed}; open → invoice approval refused (409); the assignee can never approve that invoice (403) |
 | `budgets` *(v2.4)* | `cost_center`, `fiscal_year` (e.g. 2026-27), `quarter` 1–4 (Apr–Jun = 1), `amount`; warnings only |
 | `categories` + `request_approvals` *(v2.4, additive)* | `extra_approver_id`, `extra_step_label` on categories; `designated_approver_id`, `step_label` on approval steps (copied when a chain starts) |
+| `vendor_payment_profiles` *(v2.4)* | `vendor_id`, `pan`, `tds_section`, `payee_type`, `bank_account`, `ifsc`, `status` ∈ {pending_verification, verified}, `changed_by`, `verified_by` (maker-checker) |
+| `payment_runs`, `payment_lines` *(v2.4)* | run: `number`, `status` ∈ {draft, submitted, approved, sent, settled, partly_failed, cancelled}, `prepared_by`, `approved_by`, `hold_reason`, totals, `bank_file_sha256`; line: `invoice_id`, `gross`, `tds_section/rate/amount`, `net`, `risk_results`, rule-set versions, `status`, `utr` (unique) |
 | `assistant_turns` *(v2.3)* | `user_id`, `question`, `tool_calls jsonb` (tool names + arguments, not results), `answer`, `model_id`, `prompt_version`, `grounded` (every ₹ figure found in tool results) |
 
 **Database grants:** the application role gets `INSERT, SELECT` on `audit_events`, with no `UPDATE` or `DELETE`. Migrations run as a separate owner role.
@@ -281,6 +283,20 @@ The rule set is a Python module with `RULE_SET_VERSION = "2026.09.1"`. Tolerance
 **Outcome:** `matched` if no rule fails. Otherwise `exception`, with `amount_at_risk` = the ₹ difference involved and a risk score from fixed weights.
 
 The AI explanation receives **only** the `rule_results` JSON, never the document text. It cannot change the outcome.
+
+### 6b. Payment-risk rules *(v2.4, `payments/risk.py`, `PAYMENT_RULE_SET_VERSION`)*
+
+Checked when an invoice joins a payment run, again at submit and at approval, on current facts.
+- **Block** (cannot submit): invoice not approved; already paid or in another live run; amount above what is left;
+  no payment profile; bank details not verified by a second person; the same bank account on another vendor.
+- **Hold** (approver must write a reason): bank details changed in the last 30 days; first payment to the vendor;
+  draft bill not confirmed in the ERP; invoice missing from GSTR-2B; no valid PAN (206AA rate applies).
+
+### 6c. TDS rules *(v2.4, `payments/tds.py`, `TDS_RULE_SET_VERSION`; to be confirmed by a CA)*
+
+Base = value before GST. 194C: 1% individual/HUF, 2% others, when one payment > ₹30,000 or the year > ₹1,00,000.
+194J: 10% professional, 2% technical, when the year > ₹50,000. 194Q: 0.1% on the year's purchases above ₹50,00,000.
+No valid PAN: at least 20% (5% under 194Q). Rounded to the nearest rupee. Net paid = gross − TDS.
 
 **Deferred** (designed for, not built): credit notes and debit notes (a negative invoice linked to the original), PO amendments, multiple currencies, TDS (tax deducted at source).
 

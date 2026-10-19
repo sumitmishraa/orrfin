@@ -6,7 +6,7 @@
  * open nobody can approve it, and the person asked can never approve it. Both sides are audited.
  */
 import { useState } from "react";
-import { MessageSquareText } from "lucide-react";
+import { MessageSquareText, Sparkles } from "lucide-react";
 
 import { ErrorNotice, Panel } from "@/components/page";
 import { Button } from "@/components/ui/button";
@@ -79,6 +79,13 @@ export function QuestionsPanel({ invoice, onChange }: { invoice: InvoiceDetail; 
                 ))}
               </Select>
             </Field>
+            <Button type="button" size="sm" variant="outline" className="self-start"
+                    onClick={() => void (async () => {
+                      const note = await post<{ text: string }>(`/invoices/${invoice.id}/draft-note`, { audience: "requester" });
+                      setQuestion(note.text);
+                    })().catch(() => setError("Could not draft the question."))}>
+              <Sparkles aria-hidden /> Draft the question
+            </Button>
             <Field label="Question" htmlFor="ask-what">
               <Textarea id="ask-what" rows={2} value={question} onChange={(e) => setQuestion(e.target.value)}
                         placeholder="e.g. The price is 7% above the PO. Did we agree a new rate?" />
@@ -89,8 +96,39 @@ export function QuestionsPanel({ invoice, onChange }: { invoice: InvoiceDetail; 
             </Button>
           </div>
         ) : null}
+        {view.can_ask ? <VendorNote invoiceId={invoice.id} /> : null}
         <ErrorNotice message={error} />
       </div>
     </Panel>
+  );
+}
+
+/** A note to copy to the supplier, written from the check results only. Orrfin sends nothing. */
+function VendorNote({ invoiceId }: { invoiceId: string }) {
+  const [note, setNote] = useState<{ text: string; source: string; note?: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-3">
+      <Button type="button" size="sm" variant="outline" className="self-start" onClick={async () => {
+        setError(null);
+        try { setNote(await post(`/invoices/${invoiceId}/draft-note`, { audience: "vendor" })); setCopied(false); }
+        catch (e) { setError(e instanceof Error ? e.message : "Could not draft the note."); }
+      }}>
+        <Sparkles aria-hidden /> Draft a note to the vendor
+      </Button>
+      {note ? (
+        <>
+          <Textarea aria-label="Note to the vendor" rows={7} value={note.text} onChange={(e) => setNote({ ...note, text: e.target.value })} />
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <Button type="button" size="sm" onClick={() => void navigator.clipboard.writeText(note.text).then(() => setCopied(true))}>
+              {copied ? "Copied" : "Copy"}
+            </Button>
+            <span>Written by {note.source}. Orrfin does not send it: paste it into your email.{note.note ? ` ${note.note}` : ""}</span>
+          </div>
+        </>
+      ) : null}
+      <ErrorNotice message={error} />
+    </div>
   );
 }

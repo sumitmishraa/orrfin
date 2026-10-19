@@ -47,6 +47,13 @@ class RequestCreate(BaseModel):
     needed_by: date | None = None
     suggested_vendor_id: uuid.UUID | None = None
     lines: list[LineIn] = Field(min_length=1, max_length=50)
+    # Step 24: set when the form was pre-filled by the intake agent; recorded in the audit event.
+    ai_draft: "AiDraftMeta | None" = None
+
+
+class AiDraftMeta(BaseModel):
+    model_id: str = Field(max_length=200)
+    prompt_version: str = Field(max_length=40)
 
 
 class RequestEdit(BaseModel):

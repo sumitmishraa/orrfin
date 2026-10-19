@@ -7,7 +7,7 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BadgeCheck, Bell, Building2, Cable, FileText, Gauge, Inbox, ListChecks, LogOut, Package, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles } from "lucide-react";
+import { ArrowLeftRight, BadgeCheck, Bell, CalendarCheck, Building2, Cable, FileText, Gauge, Inbox, ListChecks, LogOut, Package, ScrollText, Landmark, ShieldCheck, SlidersHorizontal, Sparkles } from "lucide-react";
 
 import { AssistantPanel } from "@/components/assistant-panel";
 import { SessionProvider, useMe } from "@/components/session";
@@ -22,6 +22,9 @@ const NAV = [
   { href: "/requests", label: "Requests", icon: ListChecks },
   { href: "/invoices", label: "Invoices", icon: FileText },
   { href: "/pos", label: "POs", icon: Package },
+  { href: "/payments", label: "Payments", icon: Landmark, financeOnly: true },
+  { href: "/bank", label: "Bank", icon: ArrowLeftRight, financeOnly: true },
+  { href: "/close", label: "Month-end close", icon: CalendarCheck, financeOnly: true },
   { href: "/vendors", label: "Vendors", icon: Building2 },
   { href: "/audit", label: "Audit", icon: ScrollText },
   { href: "/rules", label: "Rules", icon: SlidersHorizontal },
@@ -54,7 +57,7 @@ function Shell({ children }: { children: ReactNode }) {
           <span className="font-semibold tracking-tight">Orrfin</span>
         </div>
         <nav aria-label="Main" className="flex flex-1 flex-col gap-0.5 px-3 py-2">
-          {NAV.filter((item) => !("adminOnly" in item) || me.role === "admin").map(({ href, label, icon: Icon, ...item }) => {
+          {NAV.filter((item) => (!("adminOnly" in item) || me.role === "admin") && (!("financeOnly" in item) || me.role === "admin" || me.role === "finance")).map(({ href, label, icon: Icon, ...item }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
               <Link key={href} href={href} aria-current={active ? "page" : undefined}

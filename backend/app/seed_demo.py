@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.passwords import hash_password
 from app.db import SessionLocal
-from app.models import ApprovalPolicy, Budget, Category, Org, User
+from app.models import ApprovalPolicy, Budget, Category, Org, User, Vendor, VendorPaymentProfile
 from app.modules.connectors.service import ensure_connections
 from app.modules.workflows.budgets import quarter_of, today_ist
 
@@ -36,6 +36,15 @@ CATEGORIES = ["IT hardware", "Office supplies", "Professional services"]
 SECURITY_LEAD = ("kabir.security@demo.orrfin.ai", "Kabir Khan", "approver", "0")
 SOFTWARE_CATEGORY = ("Software & SaaS", "IT security review")
 # Step 22: budgets for the current financial-year quarter, per cost centre (warnings only).
+# Step 25: synthetic vendor payment details that show each payment-risk path in the demo.
+# (vendor name starts with, PAN, TDS section, payee type, account, IFSC, verified, days since bank change)
+PAYMENT_PROFILES = [
+    ("Shreeji", "AABCS4821K", "194C", "company", "50200012345678", "HDFC0001234", True, 200),
+    ("Kaveri", "AAKFK3310P", "194Q", "company", "91101000456789", "ICIC0004567", True, 5),   # recent change → hold
+    ("Sahyadri", "ABNPS1204H", "194C", "individual", "32011122334455", "ORFN0000000", True, 300),  # mock bank rejects
+    ("Deccan", None, "194C", "company", "60011223344556", "SBIN0007788", True, 400),  # no PAN → 206AA rate
+    ("Northwind", "AADCN5566Q", "194J", "company", "78900011122233", "UTIB0001122", False, 2),  # unverified → block
+]
 BUDGETS = {"IT-OPS": Decimal("1000000.00"), "FIN-OPS": Decimal("300000.00"),
            "ADMIN": Decimal("200000.00"), "MARKETING": Decimal("500000.00")}
 # §9 demo tiers, to be confirmed by the founder (BUILD_PLAN §14 Q7).
@@ -88,6 +97,8 @@ def seed(db: Session) -> Org:
                                           Budget.fiscal_year == fy, Budget.quarter == quarter)) is None:
             db.add(Budget(org_id=org.id, cost_center=cost_center, fiscal_year=fy, quarter=quarter, amount=amount))
 
+    _seed_payment_profiles(db, org, users)
+
     if db.scalar(select(func.count()).select_from(ApprovalPolicy).where(ApprovalPolicy.org_id == org.id)) == 0:
         for low, high, steps in POLICIES:
             db.add(ApprovalPolicy(org_id=org.id, min_amount=low, max_amount=high, steps=steps))
@@ -97,6 +108,24 @@ def seed(db: Session) -> Org:
 
     db.commit()
     return org
+
+
+def _seed_payment_profiles(db: Session, org: Org, users: dict[str, User]) -> None:
+    """Payment details for the mirrored vendors (only once the ERP sync has brought them in)."""
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    for prefix, pan, section, payee, account, ifsc, verified, days in PAYMENT_PROFILES:
+        vendor = db.scalar(select(Vendor).where(Vendor.org_id == org.id, Vendor.name.ilike(f"{prefix}%")).limit(1))
+        if vendor is None or db.scalar(select(VendorPaymentProfile.id).where(
+                VendorPaymentProfile.org_id == org.id, VendorPaymentProfile.vendor_id == vendor.id)):
+            continue
+        db.add(VendorPaymentProfile(
+            org_id=org.id, vendor_id=vendor.id, pan=pan, tds_section=section, payee_type=payee,
+            account_name=vendor.name, bank_account=account, ifsc=ifsc,
+            status="verified" if verified else "pending_verification", changed_by=users["finance"].id,
+            changed_at=now - timedelta(days=days), verified_by=users["admin"].id if verified else None,
+            verified_at=now - timedelta(days=days) if verified else None))
 
 
 def main() -> None:

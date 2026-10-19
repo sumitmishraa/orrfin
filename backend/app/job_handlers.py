@@ -8,3 +8,4 @@ from app.modules.invoices import service as _invoices_service  # noqa: F401  (re
 from app.modules.invoices import match_job as _match_job  # noqa: F401  (registers "match")
 from app.modules.connectors import router as _connectors_router  # noqa: F401  (registers "erp_prepare")
 from app.modules.erp_outbox import service as _erp_outbox  # noqa: F401  (registers "erp_push")
+from app.modules.payments import service as _payments  # noqa: F401  (registers "bank_settle", the mock bank)

@@ -12,11 +12,16 @@ from pydantic import BaseModel
 from app.auth.router import router as auth_router
 from app.config import get_settings
 from app.errors import DomainError
+from app.modules.assistant.router import notes_router as assistant_notes_router
 from app.modules.assistant.router import router as assistant_router
+from app.modules.bank.router import router as bank_router
+from app.modules.close.router import router as close_router
 from app.modules.connectors.router import router as connectors_router
 from app.modules.erp_outbox.router import router as erp_outbox_router
+from app.modules.gst.router import router as gst_router
 from app.modules.insights.router import router as insights_router
 from app.modules.invoices.router import router as invoices_router
+from app.modules.payments.router import router as payments_router
 from app.modules.procurement.router import router as procurement_router
 from app.modules.review.router import router as review_router
 from app.modules.rules.router import router as rules_router
@@ -63,6 +68,11 @@ def create_app() -> FastAPI:
     app.include_router(rules_router)
     app.include_router(workflows_router)
     app.include_router(assistant_router)
+    app.include_router(assistant_notes_router)
+    app.include_router(payments_router)
+    app.include_router(bank_router)
+    app.include_router(close_router)
+    app.include_router(gst_router)
     return app
 
 

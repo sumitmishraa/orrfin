@@ -187,7 +187,8 @@ def create_request(body: RequestCreate, user: CurrentUser, db: DbSession) -> Req
     request = service.create_request(
         db, user, category_id=body.category_id, title=body.title, justification=body.justification,
         cost_center=body.cost_center, needed_by=body.needed_by, suggested_vendor_id=body.suggested_vendor_id,
-        lines=[service.LineInput(**line.model_dump()) for line in body.lines])
+        lines=[service.LineInput(**line.model_dump()) for line in body.lines],
+        ai_draft=body.ai_draft.model_dump() if body.ai_draft else None)
     return _commit_and_show(db, user, request)
 
 

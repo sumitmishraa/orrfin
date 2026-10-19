@@ -39,6 +39,7 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 | `backend/app/modules/matching/` | **Pure** §6 rules engine: `engine.py`, `config.py` (version, tolerances, risk weights), template `explain.py` |
 | `backend/app/modules/review/` | Invoice decisions with SoD, re-match, audit list/timeline/verify, Control Graph |
 | `backend/app/modules/insights/` | Control dashboard numbers (`GET /insights/summary`): deterministic SQL, role-scoped like the pages; later modules add sections through `SECTION_PROVIDERS` |
+| `backend/app/modules/payments/` | Simulated payments (ADR 0008): pure `tds.py` (§6c) and `risk.py` (§6b); `service.py` profiles with maker-checker, runs with SoD, bank file, mock bank job `bank_settle` (idempotent, writes a statement CSV) |
 | `backend/app/modules/assistant/` | Orrfin Assistant (ADR 0007): `tools.py` read-only tools bound to the user (reuse the pages' loaders), `service.py` links/₹ check/rate limit/log, `POST /assistant/ask`; port `ports/assistant.py`, adapters `gemini_assistant.py`, `claude_assistant.py`, `fake_assistant.py` |
 | `backend/app/modules/workflows/` | My tasks (derived), overdue + nudge, WhatsApp preview text, exception tasks (questions on held invoices), workflow settings, budgets (warnings only); plugs dashboard sections and the invoice questions panel in through hooks |
 | `backend/app/modules/rules/` | Rules page: IF/THEN view of every control; admins edit approval tiers (validated, audited, new chains only) and category buyers |
@@ -71,5 +72,6 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 - [ADR 0001](adr/0001-postgres-driver-pg8000.md): pg8000 Postgres driver (Windows blocks psycopg's DLL).
 - [ADR 0002](adr/0002-app-database-role.md): the app runs as the restricted `orrfin_app` role (`SET ROLE`), so it can't rewrite audit events.
 - [ADR 0003](adr/0003-ai-provider-and-fake-extractor.md): one AI port, three providers; the answer-key stand-in is always labelled; AI outages fall back to manual entry.
+- [ADR 0008](adr/0008-simulated-payments.md): payments are simulated (bank file + mock bank), rule-based TDS and risk checks, maker-checker bank details, no ledger.
 - [ADR 0007](adr/0007-assistant-agent.md): the assistant is read-only, runs with the user's permissions, links only to records its tools returned, and ₹-checks its answers.
 - [ADR 0004](adr/0004-multi-erp-connectors.md): one ERP port, 11 connectors, each labelled Live / Sandbox / Simulated; write-back built once against the port.

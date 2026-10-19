@@ -56,3 +56,37 @@ class ClaudeAssistant:
                                 "is_error": "error" in result})
             messages.append({"role": "user", "content": results})
         raise AssistantUnavailable(f"Stopped after {MAX_TOOL_ROUNDS} rounds of lookups without an answer.")
+
+
+
+class ClaudeDrafter:
+    """Structured drafts (intake, via output_config.format) and short notes with Claude (Step 24)."""
+
+    def __init__(self, client: Any, model_id: str):
+        self.client = client
+        self.model_id = model_id
+
+    def _create(self, **kwargs: Any) -> Any:
+        try:
+            response = self.client.messages.create(model=self.model_id, max_tokens=8000, **kwargs)
+        except anthropic.APIStatusError as exc:
+            raise AssistantUnavailable(f"Claude API error {exc.status_code}") from exc
+        except anthropic.APIConnectionError as exc:
+            raise AssistantUnavailable("Could not reach Claude.") from exc
+        if response.stop_reason in ("refusal", "max_tokens"):
+            raise AssistantUnavailable(f"Claude stopped: {response.stop_reason}.")
+        return "".join(b.text for b in response.content if b.type == "text").strip()
+
+    def json(self, system: str, text: str, schema: dict[str, Any]) -> dict[str, Any]:
+        out = self._create(system=system, messages=[{"role": "user", "content": text}],
+                           output_config={"format": {"type": "json_schema", "schema": schema}})
+        try:
+            return json.loads(out)
+        except ValueError as exc:
+            raise AssistantUnavailable("Claude did not return valid JSON.") from exc
+
+    def text(self, system: str, text: str) -> str:
+        out = self._create(system=system, messages=[{"role": "user", "content": text}])
+        if not out:
+            raise AssistantUnavailable("Claude returned no text.")
+        return out

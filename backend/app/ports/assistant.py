@@ -63,3 +63,15 @@ def call_tool(tools: list[ToolSpec], name: str, arguments: dict[str, Any]) -> di
     except Exception as exc:  # a tool's refusal (e.g. not found) is an answer, not a crash
         message = getattr(exc, "message", None) or str(exc) or type(exc).__name__
         return {"error": message}
+
+
+# --- Drafter (Step 24): one-shot writing from facts the server computed ----------------------------------
+
+class Drafter(Protocol):
+    """Writes a structured draft or a short text from data Orrfin computed. Never sees document text.
+    Raises AssistantUnavailable; every caller has a deterministic fallback."""
+    model_id: str
+
+    def json(self, system: str, text: str, schema: dict[str, Any]) -> dict[str, Any]: ...
+
+    def text(self, system: str, text: str) -> str: ...

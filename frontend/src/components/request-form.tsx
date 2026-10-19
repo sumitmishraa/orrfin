@@ -32,12 +32,15 @@ const MONEY = /^\d+(\.\d{1,2})?$/;
 
 export function RequestForm({
   initial,
+  prefill,
   submitLabel,
   onSave,
   secondaryLabel,
   onSecondary,
 }: {
   initial?: RequestDetail;
+  /** Step 24: values drafted by the intake agent, for the person to check before saving. */
+  prefill?: RequestFormValues;
   submitLabel: string;
   onSave: (values: RequestFormValues) => Promise<void>;
   secondaryLabel?: string;
@@ -45,7 +48,7 @@ export function RequestForm({
 }) {
   const categories = useApi<Category[]>("/categories");
   const vendors = useApi<Vendor[]>("/vendors");
-  const [values, setValues] = useState<RequestFormValues>({
+  const [values, setValues] = useState<RequestFormValues>(prefill ?? {
     category_id: initial?.category_id ?? "",
     title: initial?.title ?? "",
     justification: initial?.justification ?? "",

@@ -3,7 +3,7 @@
  * The wording follows §13 exactly; it must never claim "fully compliant" or "no data leaves India".
  */
 import Link from "next/link";
-import { Bot, Database, FileLock2, ScrollText, ShieldCheck, Sparkles, UserCheck } from "lucide-react";
+import { Bot, Database, FileLock2, Landmark, ScrollText, ShieldCheck, Sparkles, UserCheck } from "lucide-react";
 
 import { PageHeader, Panel } from "@/components/page";
 
@@ -26,11 +26,15 @@ const ITEMS = [
   },
   {
     icon: FileLock2, title: "Draft-only into the ERP",
-    body: "Orrfin writes only draft purchase orders and draft bills, exactly once each. A person submits them inside ERPNext. No payments, no GST filing, no ledger posting.",
+    body: "Orrfin writes only draft purchase orders and draft bills, exactly once each. A person submits them inside ERPNext. Payments are simulated: an approved run produces a bank file and a mock bank marks it paid; no real money moves, no bank is connected. No GST filing (GSTR-2B is only matched), no ledger posting.",
   },
   {
     icon: UserCheck, title: "Who approved what",
     body: "Every approval is made by a named person. The server enforces segregation of duties: nobody approves their own request, the buyer who completed a request cannot approve it, the person who uploaded or edited an invoice cannot approve it, and nobody approves above their limit.",
+  },
+  {
+    icon: Landmark, title: "Payment controls (simulated)",
+    body: "Bank-detail changes need a second person to verify them. Fixed rules check every payment before it can be submitted: unapproved or already-paid invoices, unverified or shared bank accounts are blocked; recent bank changes, first payments and missing GSTR-2B entries need the approver's written reason. TDS is calculated by fixed rules (194C, 194J, 194Q), to be confirmed by a CA. The preparer, and anyone who approved one of the invoices, cannot approve the payment.",
   },
   {
     icon: ScrollText, title: "A history that cannot be quietly changed",

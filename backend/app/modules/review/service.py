@@ -50,6 +50,12 @@ def decision_refusal(db: Session, user: User, invoice: Invoice, decision: str) -
     if db.scalar(select(ExceptionTask.id).where(ExceptionTask.invoice_id == invoice.id,
                                                 ExceptionTask.assigned_to == user.id).limit(1)):
         return Forbidden("You were asked about this invoice, so someone else must approve it.")
+    from app.modules.close.service import locked_refusal  # avoids an import cycle at load time
+
+    # Step 26 period lock: a closed month refuses approvals of invoices dated in it.
+    locked = locked_refusal(db, invoice.org_id, invoice.invoice_date, "invoices")
+    if locked:
+        return locked
     if invoice.total is not None and invoice.total > user.approval_limit:
         return Forbidden(f"₹{invoice.total:,.2f} is above your approval limit of ₹{user.approval_limit:,.2f}.")
     return None

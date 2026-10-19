@@ -73,3 +73,29 @@ class GeminiAssistant:
                     continue
                 raise AssistantUnavailable(f"Gemini {type(exc).__name__}: {exc}") from exc
         raise AssistantUnavailable("Gemini did not answer.")
+
+
+
+class GeminiDrafter:
+    """Structured drafts (intake) and short notes with Gemini (Step 24)."""
+
+    def __init__(self, client: Any, model_id: str):
+        self.client = client
+        self.model_id = model_id
+        self._caller = GeminiAssistant(client, model_id)
+
+    def json(self, system: str, text: str, schema: dict[str, Any]) -> dict[str, Any]:
+        config = types.GenerateContentConfig(system_instruction=system, response_mime_type="application/json",
+                                             response_json_schema=schema, max_output_tokens=4000)
+        response = self._caller._generate([text], config)
+        try:
+            return json.loads(response.text or "")
+        except ValueError as exc:
+            raise AssistantUnavailable("Gemini did not return valid JSON.") from exc
+
+    def text(self, system: str, text: str) -> str:
+        config = types.GenerateContentConfig(system_instruction=system, max_output_tokens=2000)
+        answer = (self._caller._generate([text], config).text or "").strip()
+        if not answer:
+            raise AssistantUnavailable("Gemini returned no text.")
+        return answer

@@ -560,3 +560,149 @@ class AssistantTurn(TimestampMixin, Base):
     prompt_version: Mapped[str] = mapped_column(String(40), nullable=False)
     grounded: Mapped[bool | None] = mapped_column(Boolean)  # every ₹ figure found in the tool results
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class VendorPaymentProfile(TimestampMixin, Base):
+    """Orrfin-owned payment details for a vendor (Step 25, ADR 0008). The vendor master stays in the ERP.
+
+    Maker-checker: whoever changes the bank details cannot verify them; until verified, payments block.
+    """
+    __tablename__ = "vendor_payment_profiles"
+    __table_args__ = (UniqueConstraint("org_id", "vendor_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=False)
+    pan: Mapped[str | None] = mapped_column(String(10))
+    tds_section: Mapped[str | None] = mapped_column(String(4))  # 194C, 194J, 194Q or none
+    payee_type: Mapped[str] = mapped_column(String(12), nullable=False, server_default="company")
+    j_kind: Mapped[str] = mapped_column(String(12), nullable=False, server_default="professional")
+    account_name: Mapped[str] = mapped_column(String(140), nullable=False)
+    bank_account: Mapped[str] = mapped_column(String(20), nullable=False)
+    ifsc: Mapped[str] = mapped_column(String(11), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, server_default="pending_verification")
+    changed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PaymentRun(TimestampMixin, Base):
+    """A batch of simulated payments (Step 25): draft → submitted → approved → sent → settled / partly_failed."""
+    __tablename__ = "payment_runs"
+    __table_args__ = (UniqueConstraint("org_id", "number"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    number: Mapped[int] = mapped_column(Integer, nullable=False)  # shown as PAY-0001
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="draft")
+    prepared_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    hold_reason: Mapped[str | None] = mapped_column(Text)  # the approver's reason for paying despite holds
+    total_gross: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    total_tds: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    total_net: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    bank_file_sha256: Mapped[str | None] = mapped_column(String(64))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PaymentLine(TimestampMixin, Base):
+    __tablename__ = "payment_lines"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("payment_runs.id"), nullable=False, index=True)
+    invoice_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=False, index=True)
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id"))
+    gross: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    tds_base: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    tds_section: Mapped[str | None] = mapped_column(String(4))
+    tds_rate: Mapped[Decimal] = mapped_column(TAX_RATE, nullable=False, server_default="0")
+    tds_amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    net: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    risk_results: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    risk_rule_set_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    tds_rule_set_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="pending")
+    utr: Mapped[str | None] = mapped_column(String(32))
+    failure_reason: Mapped[str | None] = mapped_column(Text)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class BankStatement(TimestampMixin, Base):
+    """An imported bank statement CSV (Step 26). The same file twice is refused (sha256 per org)."""
+    __tablename__ = "bank_statements"
+    __table_args__ = (UniqueConstraint("org_id", "sha256"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    line_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+
+class BankLine(TimestampMixin, Base):
+    """One statement line and its reconciliation state: unmatched, suggested (a person must accept) or matched."""
+    __tablename__ = "bank_lines"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    statement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("bank_statements.id"), nullable=False, index=True)
+    line_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    txn_date: Mapped[date] = mapped_column(Date, nullable=False)
+    narration: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    reference: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    debit: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    credit: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="unmatched")
+    payment_line_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("payment_lines.id"))
+    match_method: Mapped[str | None] = mapped_column(String(20))
+    matched_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    matched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ClosePeriod(TimestampMixin, Base):
+    """A month's close sign-off (Step 26). A closed month refuses approvals dated in it until reopened."""
+    __tablename__ = "close_periods"
+    __table_args__ = (UniqueConstraint("org_id", "period"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    period: Mapped[str] = mapped_column(String(7), nullable=False)  # e.g. 2026-10
+    status: Mapped[str] = mapped_column(String(8), nullable=False, server_default="open")
+    closed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    close_notes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    reopened_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    reopen_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class Gstr2bImport(TimestampMixin, Base):
+    """One imported GSTR-2B statement (Step 27). Matching only: Orrfin files nothing with GSTN."""
+    __tablename__ = "gstr2b_imports"
+    __table_args__ = (UniqueConstraint("org_id", "sha256"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    period: Mapped[str] = mapped_column(String(7), nullable=False)  # e.g. 2026-09
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+
+
+class Gstr2bLine(TimestampMixin, Base):
+    """A supplier invoice as reported in GSTR-2B, and how it matched Orrfin's books."""
+    __tablename__ = "gstr2b_lines"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    import_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("gstr2b_imports.id"), nullable=False, index=True)
+    supplier_gstin: Mapped[str] = mapped_column(String(15), nullable=False)
+    supplier_name: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
+    invoice_no: Mapped[str] = mapped_column(String(60), nullable=False)
+    invoice_no_norm: Mapped[str] = mapped_column(String(60), nullable=False)
+    invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
+    fiscal_year: Mapped[str] = mapped_column(String(9), nullable=False)
+    invoice_value: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    taxable_value: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    igst: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    cgst: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    sgst: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    itc_available: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    match_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id"))

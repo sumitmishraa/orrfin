@@ -69,6 +69,35 @@ def get_assistant() -> Any:
     return ClaudeAssistant(*build_client(settings))
 
 
+_drafter_override: Any | None = None
+
+
+def get_drafter() -> Any:
+    """The writer behind intake drafts and AI notes (Step 24); None for "fake" (templates are used)."""
+    if _drafter_override is not None:
+        return _drafter_override
+    settings = get_settings()
+    if settings.ai_provider == "fake":
+        return None
+    if settings.ai_provider == "gemini":
+        from app.adapters.gemini_assistant import GeminiDrafter
+
+        return GeminiDrafter(*build_gemini_client(settings))
+    from app.adapters.claude_assistant import ClaudeDrafter
+
+    return ClaudeDrafter(*build_client(settings))
+
+
+@contextmanager
+def use_drafter(drafter: Any) -> Iterator[None]:
+    global _drafter_override
+    previous, _drafter_override = _drafter_override, drafter
+    try:
+        yield
+    finally:
+        _drafter_override = previous
+
+
 @contextmanager
 def use_assistant(assistant: Any) -> Iterator[None]:
     global _assistant_override

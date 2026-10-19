@@ -10,7 +10,8 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 
 import { useMe } from "@/components/session";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { post } from "@/lib/api";
 import { EmptyState, ErrorNotice, Loading, PageHeader, Panel } from "@/components/page";
 import { BarList, StatGrid, StatTile } from "@/components/stats";
 import { formatINR, ROLE_LABELS } from "@/lib/format";
@@ -62,7 +63,7 @@ const PERIODS: { id: Period; label: string }[] = [
 ];
 
 /** Exception codes in plain English (the same words the matching rules use, BUILD_PLAN §6). */
-export const EXCEPTION_LABELS: Record<string, string> = {
+const EXCEPTION_LABELS: Record<string, string> = {
   PRICE_VARIANCE: "Price above the PO",
   QTY_EXCEEDS_RECEIPT: "More billed than received",
   TAX_TYPE_MISMATCH: "Wrong GST type",
@@ -146,6 +147,46 @@ function WorkflowSections({ sections }: { sections: Record<string, unknown> }) {
   );
 }
 
+/** DualEntry-style "what changed": numbers computed by Orrfin, worded by AI (or a template). */
+function WhatChanged({ role }: { role: string }) {
+  const [period, setPeriod] = useState<"month" | "quarter">("month");
+  const [notes, setNotes] = useState<{ bullets: string[]; source: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (role === "requester") return null;
+
+  async function explain(p: "month" | "quarter") {
+    setPeriod(p);
+    setBusy(true);
+    setError(null);
+    try {
+      setNotes(await post(`/insights/notes?period=${p}`));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not explain.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel title="What changed" actions={
+      <div className="flex gap-2">
+        <Button size="sm" variant={period === "month" && notes ? "default" : "outline"} disabled={busy} onClick={() => void explain("month")}>vs last month</Button>
+        <Button size="sm" variant={period === "quarter" && notes ? "default" : "outline"} disabled={busy} onClick={() => void explain("quarter")}>vs last quarter</Button>
+      </div>}>
+      {notes ? (
+        <>
+          <ul className="list-disc pl-5 text-sm">{notes.bullets.map((b) => <li key={b}>{b}</li>)}</ul>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {notes.source.startsWith("template") ? "Written from Orrfin's numbers by a template." : `AI-written by ${notes.source} from Orrfin's numbers; every ₹ figure was checked.`}
+          </p>
+        </>
+      ) : <p className="text-sm text-muted-foreground">{busy ? "Comparing…" : "Compare this period with the previous one, in plain words."}</p>}
+      <ErrorNotice message={error} />
+    </Panel>
+  );
+}
+
 function ErpDrafts({ rows }: { rows: { doc_type: string; state: string; count: number }[] }) {
   const sum = (state: string) => rows.filter((r) => r.state === state).reduce((n, r) => n + r.count, 0);
   const failed = sum("FAILED") + sum("UNKNOWN");
@@ -200,6 +241,7 @@ function Dashboard({ data }: { data: InsightsSummary }) {
         ) : null}
       </StatGrid>
 
+      <WhatChanged role={data.role} />
       <WorkflowSections sections={data.sections} />
 
       <div className="grid gap-4 lg:grid-cols-2">

@@ -74,3 +74,9 @@ export const ROLE_LABELS: Record<string, string> = {
   manager: "Requester's manager",
   category_reviewer: "Category reviewer",
 };
+
+/** Payment run states in words (PROMPTS Step 25). Payments are simulated: no real money moves. */
+export const RUN_STATUS: Record<string, string> = {
+  draft: "Draft", submitted: "Waiting for approval", approved: "Approved · bank file ready", sent: "Sent to bank (simulated)",
+  settled: "Paid (simulated)", partly_failed: "Partly failed", cancelled: "Cancelled",
+};
