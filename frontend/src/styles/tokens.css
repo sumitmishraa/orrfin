@@ -38,4 +38,12 @@
   /* Effects (decorative only) */
   --orffin-cyan-bloom: rgb(129 217 251 / 40%);
   --orffin-header-glass: rgb(5 15 27 / 82%);
+
+  /*
+   * Elevation (v3.0 shell). Shadows are tinted with the brand navy, not grey, so raised
+   * surfaces look like they belong to the ice workspace. Two levels only: a card that sits
+   * above the page, and an overlay (dialog, palette, drawer).
+   */
+  --orffin-shadow-raised: 0 1px 2px rgb(9 32 61 / 6%), 0 4px 12px rgb(9 32 61 / 5%);
+  --orffin-shadow-overlay: 0 12px 32px rgb(5 15 27 / 22%), 0 2px 6px rgb(5 15 27 / 12%);
 }

@@ -8,8 +8,8 @@ export function PageHeader({ title, description, actions }: { title: string; des
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-heading">{title}</h1>
-        {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
+        <h1 className="font-display text-[1.75rem] leading-tight text-heading">{title}</h1>
+        {description ? <p className="mt-1 max-w-[70ch] text-sm text-muted-foreground">{description}</p> : null}
       </div>
       {actions ? <div className="flex gap-2">{actions}</div> : null}
     </div>
@@ -45,7 +45,7 @@ export function EmptyState({ children }: { children: ReactNode }) {
 
 export function Panel({ title, children, actions }: { title?: string; children: ReactNode; actions?: ReactNode }) {
   return (
-    <section className="rounded-xl border border-border bg-white">
+    <section className="rounded-xl border border-border bg-white shadow-raised">
       {title ? (
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold text-heading">{title}</h2>
@@ -59,9 +59,9 @@ export function Panel({ title, children, actions }: { title?: string; children: 
 
 /** Table classes: ice header, thin borders, right-aligned numbers via `num`. */
 export const table = {
-  wrap: "overflow-x-auto rounded-xl border border-border bg-white",
+  wrap: "overflow-x-auto rounded-xl border border-border bg-white shadow-raised",
   table: "w-full text-sm",
-  th: "bg-ice px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-heading",
+  th: "bg-ice px-3 py-2.5 text-left text-xs font-semibold text-heading",
   td: "border-t border-border px-3 py-2 align-top",
   num: "text-right tabular-nums",
 };

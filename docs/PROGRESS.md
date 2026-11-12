@@ -158,3 +158,7 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 - Found a second Orrfin codebase at `Documents\Microsoft-Hackathon` (runs as Docker project `orrfin-platform`, gateway on 0.0.0.0:8080). Decision (ADR 0009): this repo is the base; that one is reference only.
 - Local note: the hook "GateGuard" refuses the first write to each file and the first shell command; state the facts, then retry.
 - Next: Step 30.
+
+**Step 30 — app shell, first slice (12 Nov).** New shell: `components/shell/app-shell.tsx` (rail of product areas + side panel of pages + top bar with breadcrumb, task bell, Ask Orrfin, user, sign-out; drawer below `lg`), `components/shell/command-palette.tsx` (Ctrl+K "Jump to a page"), one navigation map `lib/navigation.ts` (areas Home / Procure / Pay / Controls / Settings; role filter; longest-match `locate`). Fonts: Hanken Grotesk (UI) + Newsreader (`font-display`, page titles and area names only). Tokens: `shadow-raised`, `shadow-overlay`.
+- Verified: tsc + lint + build clean; in the browser as admin: /home in the shell, palette opens, arrow keys + Enter navigate, 420 px drawer layout, no console errors.
+- Not done yet in Step 30: walk-through as the other four roles; shared DataTable / chart components; per-page restyle (pages only inherit the new header, panels and tables); entity switcher (needs Step 31).

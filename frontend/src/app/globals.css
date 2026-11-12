@@ -13,9 +13,15 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-heading: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  /* Page titles and area names only (font-display). Never for body text, tables or numbers. */
+  --font-display: var(--font-newsreader), Georgia, "Times New Roman", serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Elevation (tokens.css): shadow-raised for cards that sit above the page, shadow-overlay for dialogs. */
+  --shadow-raised: var(--orffin-shadow-raised);
+  --shadow-overlay: var(--orffin-shadow-overlay);
 
   /* shadcn semantic colours */
   --color-background: var(--background);
