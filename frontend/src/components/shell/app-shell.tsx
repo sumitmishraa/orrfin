@@ -182,7 +182,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             ) : null}
           </Link>
 
-          <button type="button" onClick={() => setAssistantOpen(true)}
+          <button type="button" onClick={() => setAssistantOpen(true)} aria-label="Ask Orrfin"
                   className="flex h-9 shrink-0 items-center gap-2 rounded-lg bg-navy px-3 text-sm font-medium text-white hover:bg-blue-dark">
             <Sparkles className="size-4 text-cyan" aria-hidden />
             <span className="hidden sm:inline">Ask Orrfin</span>
