@@ -3,8 +3,8 @@
 Each step appends 8 lines or fewer: what was built, how to view it, open issues. New sessions read this file instead of re-reading the codebase.
 
 ## Current state
-- Step 0 (manual setup): Docker done; Bedrock access **pending**: founder opened an AWS support case (use-case form blocked); advised to file it as "Account and billing".
-- Steps 1, 3, 4, 5: done (29 Sep). Step 2: code done, live run blocked on Bedrock access. Steps 6-10 done (4 Oct). Step 11 (ERP research) done (5 Oct). Next: Step 12 (multi-ERP plug); live ERPNext is now Step 13 (start the 14-day trial then). Bedrock still locked, so Gemini is now the working AI (12 Oct, ADR 0005); `.env` stays AI_PROVIDER=fake until the founder pastes GEMINI_API_KEY. Steps renumbered in v2.2 (22 steps).
+- **Steps 1–27 done** (the P2P Control Gate; last commit `0a50cba`, 19 Oct). Step 2's live Bedrock run is still blocked on AWS access; Gemini is the working AI (ADR 0005).
+- **Plan v3.0 approved 12 Nov:** Orrfin becomes a 17-product procurement platform (BUILD_PLAN changes 36–50, ADR 0009, ADR 0010). **Next: Step 30** (design system + app shell), then Steps 31–40 in order; AWS (Step 28) and the final review (Step 29) run after Step 40.
 
 ## Decisions so far
 - Plan: docs/BUILD_PLAN.md v2.1 (intake-to-procure + draft PO added 29 Sep). Prompts: docs/PROMPTS.md (15 steps).
@@ -146,3 +146,15 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 - Photo bills: upload accepts JPEG/PNG (magic bytes checked) besides PDF; `Extractor.extract(data, mime_type)` in port + Gemini/Claude (image block)/fake; prompt extract-v2 ("never guess a figure you cannot read"); file served with its own type; invoice page shows the image. Synthetic photos in `evals/extraction-photos/` (script `backend/scripts/make_photo_invoices.py`).
 - UI: /gst (upload, tiles, missing-in-2B list, lines); sidebar GSTR-2B; home tiles for payments, ITC at risk and this month's close progress (new `close` dashboard section).
 - Verified: 4 GST/photo integration tests (seed 2B → matched/differs/missing ₹24,336.00/not in books; handwritten photo → extract → confirm → matched; disguised file 422), close dashboard test, full suite; tsc + lint clean.
+
+**Research only — competitor/platform plan (21 Oct).** Added `docs/COMPETITOR_RESEARCH_AND_PLATFORM_PLAN_2026-10-21.md`: five competitors, REA/ECC/Skills assessment, independent implementation method, proposed chat-first architecture, ERP contracts and phased pilot gates.
+- Grounded in local HEAD `0a50cba`, relevant source/tests, public vendor/API/terms sources; no application changes, installations, deployment or BUILD_PLAN amendments.
+- Readiness gaps: historical Gemini extraction 52.3% with 6 errors; assistant 5/25 pass@1 with many unavailable responses; real connector verification and stale documentation need reconciliation. Tests were inspected, not rerun.
+- Proposal only: preserve draft-only ERP writes, human decisions and simulated payments; future scope requires plan revision. Next approved build step remains 28, then 29.
+
+**Plan v3.0 + Step 30 prep (12 Nov).** Founder approved the platform: 17 products, 8 more ERPs (all Simulated), workflow-builder agent (AI drafts, admin publishes), simulated global payments + vendor cards, new shell, security pass, cleanup. Docs only so far: BUILD_PLAN v3.0 (changes 36–50; §1, §2, §5, §6d–f, §9, §11 M8–M17; §8 untouched), ADR 0009 + 0010, PROMPTS Steps 30–40 (28–29 now run after 40).
+- Baseline before any code change: backend suite green (≈485 passed, 4 skipped), tsc + lint + `next build` clean (24 routes).
+- Skills: inspected `cloudflare/security-audit-skill` (installed whole: local validators, no network) and `mukul975/Anthropic-Cybersecurity-Skills` (818 skills; installed 12 web/API ones as SKILL.md + references only, no scripts). Both in `.claude/skills/`.
+- Found a second Orrfin codebase at `Documents\Microsoft-Hackathon` (runs as Docker project `orrfin-platform`, gateway on 0.0.0.0:8080). Decision (ADR 0009): this repo is the base; that one is reference only.
+- Local note: the hook "GateGuard" refuses the first write to each file and the first shell command; state the facts, then retry.
+- Next: Step 30.

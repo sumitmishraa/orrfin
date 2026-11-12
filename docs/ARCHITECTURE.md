@@ -1,7 +1,7 @@
 # Orrfin architecture (one page)
 
 The full design is in [BUILD_PLAN.md](BUILD_PLAN.md) §4. This page says what exists **now** and where it lives.
-Status: Step 1 (walking skeleton). No business tables or features yet.
+Status: Steps 1–27 built (the P2P Control Gate: every row in "Folders" below exists). Platform v3.0 (BUILD_PLAN changes 36–50, [ADR 0009](adr/0009-platform-expansion.md)) is being added in Steps 30–40; this page is rewritten in Steps 39–40. The "Components" table below still describes Step 1 and is out of date until then.
 
 ## Components
 
@@ -78,3 +78,5 @@ Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► 
 - [ADR 0008](adr/0008-simulated-payments.md): payments are simulated (bank file + mock bank), rule-based TDS and risk checks, maker-checker bank details, no ledger.
 - [ADR 0007](adr/0007-assistant-agent.md): the assistant is read-only, runs with the user's permissions, links only to records its tools returned, and ₹-checks its answers.
 - [ADR 0004](adr/0004-multi-erp-connectors.md): one ERP port, 11 connectors, each labelled Live / Sandbox / Simulated; write-back built once against the port.
+- [ADR 0009](adr/0009-platform-expansion.md): the platform products are modules of this one application; product-to-module map; safety rules unchanged.
+- [ADR 0010](adr/0010-workflow-engine.md): workflows are versioned definitions run by a deterministic interpreter; AI may draft, an admin publishes; the engine routes but never authorises.

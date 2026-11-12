@@ -1,17 +1,19 @@
 # Orrfin
 
-Orrfin is building a 7-day investor prototype: a P2P invoice-matching "Control Gate" connected to ERPNext.
+Orrfin is a procurement platform built around the customer's existing ERP. It started as a P2P invoice-matching "Control Gate" (Steps 1-27) and, from plan v3.0, adds supplier onboarding, sourcing, risk, contracts, a workflow engine, spend insights, simulated global payments and vendor cards, and an AI concierge.
 
-**The source of truth is [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) (v2.2).** Read it before any work, and follow its milestones in order (M0 to M7).
+**The source of truth is [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) (v3.0).** Read it before any work, and follow its milestones in order (M0 to M6d done; M8 to M17 next; M7 deploy last).
 
 Build step by step with [docs/PROMPTS.md](docs/PROMPTS.md). At the start of every step, read [docs/PROGRESS.md](docs/PROGRESS.md) (the handoff log); at the end, append 8 lines or fewer to it. UI colours come from [docs/BRAND.md](docs/BRAND.md).
 
-Status: Steps 1, 3-10 done (to 4 Oct): skeleton; login and roles; fake-ERPNext sync; intake-to-procure; evaluation invoices; upload + extraction; matching engine; invoice review with SoD and audit; Control Graph + Trust page. AI now runs on Google Gemini (`AI_PROVIDER=gemini`, ADR 0005) until Bedrock access is granted; real-AI accuracy waits on the founder's GEMINI_API_KEY in `.env`. Plan v2.2 (5 Oct): multi-ERP connectors; Step 11 (ERP research, [docs/ERP_CONNECTORS.md](docs/ERP_CONNECTORS.md)) done. Steps 12-20 done (13 Oct): multi-ERP plug, encrypted connector keys (ADR 0006), outbox write-back of draft bills/POs, 11 connectors (Live: ERPNext, TallyPrime, Business Central, Zoho Books, Odoo; Sandbox: SAP S/4HANA; Simulated: BUSY, Dynamics F&O, SAP B1, Oracle Fusion, NetSuite). Founder connects accounts with docs/CONNECT_ERPS.md. Plan v2.4 (18 Oct, from the Zip/DualEntry research): Steps 21-27 = dashboard + Rules page; workflows (reminders, exception tasks, category approvals, budgets, WhatsApp preview); read-only AI assistant; intake agent + AI notes; simulated payments + payment risk + TDS; bank reconciliation + month-end close; GSTR-2B ITC matching + photo bills. Steps 21-27 done (19 Oct): all of the above built and tested (simulated payments only, no real money; GSTR-2B matched, never filed). AWS is Step 28, final review Step 29. Next: Step 28 (AWS). Update this line as milestones complete.
+Status: Steps 1, 3-10 done (to 4 Oct): skeleton; login and roles; fake-ERPNext sync; intake-to-procure; evaluation invoices; upload + extraction; matching engine; invoice review with SoD and audit; Control Graph + Trust page. AI now runs on Google Gemini (`AI_PROVIDER=gemini`, ADR 0005) until Bedrock access is granted; real-AI accuracy waits on the founder's GEMINI_API_KEY in `.env`. Plan v2.2 (5 Oct): multi-ERP connectors; Step 11 (ERP research, [docs/ERP_CONNECTORS.md](docs/ERP_CONNECTORS.md)) done. Steps 12-20 done (13 Oct): multi-ERP plug, encrypted connector keys (ADR 0006), outbox write-back of draft bills/POs, 11 connectors (Live: ERPNext, TallyPrime, Business Central, Zoho Books, Odoo; Sandbox: SAP S/4HANA; Simulated: BUSY, Dynamics F&O, SAP B1, Oracle Fusion, NetSuite). Founder connects accounts with docs/CONNECT_ERPS.md. Plan v2.4 (18 Oct, from the Zip/DualEntry research): Steps 21-27 = dashboard + Rules page; workflows (reminders, exception tasks, category approvals, budgets, WhatsApp preview); read-only AI assistant; intake agent + AI notes; simulated payments + payment risk + TDS; bank reconciliation + month-end close; GSTR-2B ITC matching + photo bills. Steps 21-27 done (19 Oct): all of the above built and tested (simulated payments only, no real money; GSTR-2B matched, never filed). Plan v3.0 (12 Nov, ADR 0009 + 0010): 17-product platform in Steps 30-40 (shell; entities + currencies + tax regimes + workflow engine + intake forms; suppliers + portal + risk; sourcing + contracts; simulated global payments + vendor cards; AI layer + MCP; 8 more connectors; spend insights + PDFs + App Studio; security pass; cleanup). AWS (Step 28) and final review (Step 29) run after Step 40. Next: Step 30 (design system + app shell). Update this line as milestones complete.
 
 ## Non-negotiables
 
 - Synthetic data only. No secrets in the repo.
 - No **real** money movement: payments are simulated (bank bulk file + mock bank), never a real bank connection (ADR 0008). No GST filing: GSTR-2B is read and matched only. No ledger posting: Orrfin writes no journals and no ERP payment entries; ERP writes are draft Purchase Invoices and draft POs only, through the outbox protocol (BUILD_PLAN §8).
+- *(v3.0)* Global payments and vendor cards are simulated too (mock bank, mock card issuer). The ERP owns the vendor master: Orrfin never creates or edits a vendor in an ERP.
+- *(v3.0)* AI may propose a typed card (request, RFQ, supplier invite, workflow draft); a named person submits or publishes it through the normal endpoint. AI never publishes a workflow, awards an RFQ, scores supplier risk or sets an exchange rate. A workflow can add steps but can never switch off a §9 rule.
 - AI extracts, explains and drafts; it never acts. Deterministic rules decide the match, payment risk, TDS and bank reconciliation (§6, §6b, §6c). A named human approves, with segregation of duties enforced on the server (§9).
 - Money is `NUMERIC(18,2)` / `Decimal`, never float.
 - `org_id` goes on every business table.
@@ -45,7 +47,7 @@ Status: Steps 1, 3-10 done (to 4 Oct): skeleton; login and roles; fake-ERPNext s
 | Next.js UI | `ecc:frontend-patterns`, `ecc:nextjs-turbopack`; visual polish with `gstack-design-review` |
 | Docker, EC2, deploy | `ecc:docker-patterns`, `ecc:deployment-patterns` |
 | Code review before commit | `review-changes` (code-review-graph) + `ecc:python-review` |
-| Security review | `ecc:security-review` (`gstack-cso` is unavailable on Windows) |
+| Security review | `ecc:security-review`; full audit or attack pass with `security-audit` (Cloudflare) plus the focused `testing-*` skills in `.claude/skills/` (`gstack-cso` is unavailable on Windows) |
 | Bug investigation | `debug-issue` (code-review-graph) or `gstack-investigate` |
 | Browser QA of the demo | `gstack-qa` or `ecc:browser-qa` |
 | Docs and architecture notes | `gstack-document-generate`, `ecc:update-docs` |

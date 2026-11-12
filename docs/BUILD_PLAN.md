@@ -1,7 +1,7 @@
-# Orrfin P2P + Invoice-Matching Prototype: Build Plan v2
+# Orrfin Procurement Platform: Build Plan v3
 
-**Status:** approved plan; Step 1 (walking skeleton) built. See `docs/PROGRESS.md`.
-**Version:** v2.4 (18 Oct 2026): the founder extended v2.3 to everything the Zip/DualEntry guide recommends, including simulated payments, payment-risk checks, TDS, bank reconciliation, month-end close, GSTR-2B matching, photo bills, budgets and workflow automations (changes 28–35). v2.3 (18 Oct 2026): adds a control dashboard, a Rules page and a read-only AI assistant + intake agent, from the Zip/DualEntry competitor research, approved by the founder on 18 Oct (changes 23–27 below). v2.2 (5 Oct 2026). v2 (26 Sep) replaced v1 after an engineering review scored v1 at 50/100. v2.1 adds the intake-to-procure workflow and full P2P (Orrfin drafts the PO), approved by the founder on 29 Sep. v2.2 adds multi-ERP connectors (Tally, Microsoft Dynamics, SAP, Oracle, Zoho, Odoo beside ERPNext), approved by the founder on 5 Oct; see "v2.2 changes" below and `docs/ERP_CONNECTORS.md`. 11 Oct: Gemini is the working AI until Bedrock access is granted (change 22, ADR 0005).
+**Status:** approved plan; Steps 1–27 built (the P2P Control Gate). Platform Steps 30–40 in progress. See `docs/PROGRESS.md`.
+**Version:** v3.0 (12 Nov 2026): the founder extended the product from the Control Gate to a full procurement platform of 17 products, more ERPs, a chat agent that drafts workflows, a new app shell, and a security hardening pass (changes 36–50 below, ADR 0009, ADR 0010). Every earlier safety rule still holds. v2.4 (18 Oct 2026): the founder extended v2.3 to everything the Zip/DualEntry guide recommends, including simulated payments, payment-risk checks, TDS, bank reconciliation, month-end close, GSTR-2B matching, photo bills, budgets and workflow automations (changes 28–35). v2.3 (18 Oct 2026): adds a control dashboard, a Rules page and a read-only AI assistant + intake agent, from the Zip/DualEntry competitor research, approved by the founder on 18 Oct (changes 23–27 below). v2.2 (5 Oct 2026). v2 (26 Sep) replaced v1 after an engineering review scored v1 at 50/100. v2.1 adds the intake-to-procure workflow and full P2P (Orrfin drafts the PO), approved by the founder on 29 Sep. v2.2 adds multi-ERP connectors (Tally, Microsoft Dynamics, SAP, Oracle, Zoho, Odoo beside ERPNext), approved by the founder on 5 Oct; see "v2.2 changes" below and `docs/ERP_CONNECTORS.md`. 11 Oct: Gemini is the working AI until Bedrock access is granted (change 22, ADR 0005).
 **Target:** a working investor demo on synthetic data. The pitch date moved later (v2.1) and is not yet fixed; build in `docs/PROMPTS.md` step order.
 **Not a target:** production use or real customer data. See section 12 for the gates that must be passed before a pilot.
 
@@ -71,7 +71,29 @@ Not built in v2.3 (superseded by v2.4 below for most items).
 | 34 | **GSTR-2B ITC matching** (matching only) and **photo / handwritten bills** (JPEG/PNG, same checks and human confirmation). | India gaps neither competitor fills |
 | 35 | Steps: 21 dashboard + rules, 22 workflows + budgets, 23 assistant, 24 intake agent + AI notes + eval, 25 payments, 26 bank + close, 27 GSTR-2B + photo bills, 28 deploy, 29 final review. | One step per working, tested slice |
 
-Still not built: real bank connections, GST filing, journals, ERP payment entries, contract review, vendor portal, vendor quotes, Slack.
+Still not built in v2.4: real bank connections, GST filing, journals, ERP payment entries, contract review, vendor portal, vendor quotes, Slack. *(v3.0 builds contract review, the vendor portal and vendor quotes; the first four stay out.)*
+
+**v3.0 changes (12 Nov 2026, approved by the founder, including the §1, §2, §5, §6 and §9 additions; §8 is unchanged):** Orrfin becomes a procurement platform. It is an independent design from public capability descriptions and practitioner needs; no competitor code, screens or wording are used (`docs/COMPETITOR_RESEARCH_AND_PLATFORM_PLAN_2026-10-21.md` §5).
+
+| # | Change | Reason |
+|---|---|---|
+| 36 | **Scope: 17 products** on the existing application: Intake-to-Procure, Procure-to-Pay, Supplier Onboarding, Sourcing, Risk Orchestration, AI Contract Orchestration, AI Procurement Concierge, Global Payments, Vendor Cards, App Studio, Platform overview, Intake management, Workflow engine, Integration ecosystem, Spend insights, Superagents, MCP. Product-to-module map in ADR 0009. | The founder wants the whole procurement journey in one product, not only the invoice gate |
+| 37 | **Design system and app shell**: grouped navigation by product, top bar with entity switcher, command palette, shared page/table/chart components. Brand colours stay as in `docs/BRAND.md`. | One clear, premium interface a new company understands without training |
+| 38 | **Legal entities, currencies and tax regimes.** An org has one or more legal entities, each with a country, base currency, tax regime (India GST or UAE VAT) and its own ERP connection. Documents carry a currency. Exchange rates come from an admin-entered table, never from AI. (§5, §6d) | Customers in India and the Gulf; subsidiaries on different ERPs |
+| 39 | **Workflow engine** (ADR 0010): workflows are versioned JSON definitions run by a deterministic interpreter on the jobs table. A published version never changes; running instances keep their version. The v2.1 approval chain becomes the default template. §9 segregation of duties stays enforced in one place, whatever a workflow says. | Configurable routing without weakening any control |
+| 40 | **Intake management**: request types and an admin form builder (extra fields per type). | Different needs (goods, software, new supplier, contract) ask different questions |
+| 41 | **Supplier onboarding + supplier portal.** Suppliers sign in to a separate portal (their own login realm) and see only their own records. The ERP still owns the vendor master: Orrfin hands over a reviewed onboarding record, a person creates the vendor in the ERP, and the sync confirms it. | New-vendor requests were the top stretch goal; no new ERP write type is added |
+| 42 | **Risk orchestration** (§6e): deterministic supplier-risk rules with a score, blocks and holds, and review tasks. AI never scores risk. | Explainable, auditable risk |
+| 43 | **Sourcing** (§6f): RFQ → invited suppliers quote in the portal → normalised comparison → disclosed scoring → a named person awards → the normal request and approval chain → draft PO through the §8 outbox. | Vendor quotes, done with a human award |
+| 44 | **AI contract orchestration**: upload → AI extracts terms with quoted page evidence → a person confirms → obligations and renewal reminders; rule-based playbook flags. No legal advice, no signing. | Contract visibility linked to purchasing |
+| 45 | **Global payments (simulated)**: payment runs in INR, AED, USD and EUR, IBAN/SWIFT/IFSC validation, behind a `PaymentProvider` port with a mock bank. ADR 0008 rules unchanged: no real money. | Show cross-border payments; a licensed partner can be plugged in later |
+| 46 | **Vendor cards (simulated)**: request-linked virtual cards with a limit, expiry and merchant lock on a mock issuer (`CardIssuer` port); simulated transactions matched to the request. | Card spend under the same approvals |
+| 47 | **AI layer.** Chat home; the assistant gains **proposal** tools that return typed cards a person submits through the normal endpoints; a **workflow-builder agent** drafts workflow definitions that an admin reviews, simulates and publishes; **superagents** are named tool groups on the one assistant; an **Orrfin MCP server** exposes the same tools under a per-user key. Extends ADR 0007: AI still never submits, approves, awards, pays or publishes. | "Build my workflow by chatting", with a human on every decision |
+| 48 | **Eight more connectors**, all Simulated until a real test account exists: QuickBooks Online, Xero, Sage Intacct, Sage 50/200, Acumatica, Focus X, Marg ERP, and a UAE VAT mode for TallyPrime. Same port, registry, contract and failure suites. | The most used systems in India, the Gulf and globally |
+| 49 | **Spend insights** (spend cube, commitment vs invoiced vs paid kept separate), **generated PDFs** (PO, RFQ, payment advice, audit pack) and **App Studio** (custom object = form + workflow + list view; no customer code runs). | Reporting and documents buyers expect; safe extensibility |
+| 50 | **Security hardening and attack pass**: MFA, CSRF tokens, login lockout, rate limits, strict security headers, Postgres row-level security on `org_id`, portal isolation; every finding becomes a regression test. Then cleanup and restructure. Steps 30–40; AWS (Step 28) and the final review (Step 29) run after Step 40. | The §12 gates need these before any pilot |
+
+Still not built in v3.0: real bank or card-network connections, GST or VAT filing, journals, ERP payment entries, vendor-master writes to an ERP, e-signature, autonomous negotiation, auctions.
 
 ---
 
@@ -104,6 +126,11 @@ It has two connected workflows:
 - No GST filing (GSTR-2B is read and matched only, v2.4).
 - No ledger posting: no journals, no ERP payment entries. ERP drafts (POs and bills) are submitted by a human inside the ERP.
 - AI never decides whether an invoice matches, whether a payment is risky, how much TDS applies, or whether a bank line reconciles.
+- *(v3.0)* AI may **propose** (a request, an RFQ, a supplier invite, a workflow definition) as a typed card. A named person submits, awards, approves or publishes it through the normal endpoint, which re-checks permissions. AI never scores supplier risk, picks an RFQ winner, sets an exchange rate, issues a card or publishes a workflow.
+- *(v3.0)* Global payments and vendor cards are simulated like every other payment (mock bank, mock card issuer).
+- *(v3.0)* The ERP still owns the vendor master: Orrfin never creates or edits a vendor in an ERP.
+
+**Platform scope (v3.0).** Around the two workflows above, Orrfin adds: supplier onboarding and a supplier portal, supplier risk, sourcing (RFQs and quotes), contracts, a configurable workflow engine and intake forms, spend insights, simulated global payments and vendor cards, a chat concierge with a workflow-builder agent, an MCP server, App Studio and an integrations gallery. Each is a module of the same application (ADR 0009).
 
 ---
 
@@ -126,6 +153,16 @@ It has two connected workflows:
 | Approval tiers and category buyers as edited on the Rules page *(v2.3)* | **Orrfin** | Owns; each edit audited; applies to approval chains started after the edit |
 | Org workflow settings, exception tasks (questions on held invoices), budgets, category extra approvers *(v2.4)* | **Orrfin** | Owns; every change audited |
 | Assistant questions, tool calls and answers *(v2.3)* | **Orrfin** | Owns (`assistant_turns`); a log, not a business record: the assistant changes nothing |
+| Legal entities, entity-to-ERP mapping, exchange-rate table *(v3.0)* | **Orrfin** | Owns; rates are entered by an admin and audited. The ERP keeps its own company and currency setup |
+| Workflow definitions, published versions, instances and steps; request types and form fields *(v3.0)* | **Orrfin** | Owns; a published version is immutable; every publish and every step decision is audited |
+| Supplier onboarding record, supplier portal users, supplier documents and checks *(v3.0)* | **Orrfin** | Owns until handover. The **vendor master stays in the ERP**: a person creates the vendor there and the sync links it back (`suppliers.vendor_id`) |
+| Supplier risk assessments *(v3.0)* | **Orrfin** | Owns; rule results and rule-set version stored with each assessment |
+| RFQ events, invitations, quotes, comparisons and awards *(v3.0)* | **Orrfin** | Owns; an award is a named human decision. The resulting PO is still an ERP draft through the outbox |
+| Contract files, extracted terms, confirmed terms, obligations and renewal tasks *(v3.0)* | **Orrfin** | Owns; the signed contract of record stays wherever the customer signs it. Orrfin signs nothing |
+| Virtual cards and their transactions *(v3.0, simulated)* | **Orrfin** (mock issuer) | Owns the simulated card and its matching to a request; no real card network |
+| Action proposals and agent runs *(v3.0)* | **Orrfin** | Owns; a proposal is a draft bound to one user, one payload hash and an expiry. It changes nothing until that user submits it |
+| API keys, webhook endpoints and deliveries *(v3.0)* | **Orrfin** | Owns; keys stored hashed, webhook secrets encrypted |
+| Custom objects and records built in App Studio *(v3.0)* | **Orrfin** | Owns; `org_id` scoped like every business table |
 
 **Conflict rule:** if an ERP record changes after Orrfin has matched against it (its `erp_modified` is newer), the match is marked **stale** and must be re-run before approval.
 
@@ -219,7 +256,7 @@ Every business table has `id (uuid)`, `org_id (uuid, not null, indexed)`, `creat
 **Conventions:**
 - Timestamps are stored in UTC (`timestamptz`).
 - Document dates (invoice date, receipt date) are stored as `date` in IST (India time).
-- Money is `NUMERIC(18,2)`; quantities are `NUMERIC(18,3)`; rates are `NUMERIC(7,4)`; each document has a `currency` field (`INR` only in the MVP, but stored).
+- Money is `NUMERIC(18,2)`; quantities are `NUMERIC(18,3)`; rates are `NUMERIC(7,4)`; each document has a `currency` field (`INR` only up to v2.4; *v3.0:* INR, AED, USD and EUR, with exchange rates as `NUMERIC(18,8)` in `fx_rates`).
 
 | Table | Key columns |
 |---|---|
@@ -252,6 +289,25 @@ Every business table has `id (uuid)`, `org_id (uuid, not null, indexed)`, `creat
 | `close_periods` *(v2.4)* | `period` (YYYY-MM), `status` ∈ {open, closed}, `closed_by`, `closed_at`, `close_notes jsonb` (a reason per open checklist item), `reopened_by`, `reopen_reason` |
 | `gstr2b_imports`, `gstr2b_lines` *(v2.4)* | import: `period`, `gstin`, `sha256` (same file twice refused), `uploaded_by`; line: `supplier_gstin`, `supplier_name`, `invoice_no`, `invoice_date`, `invoice_value`, `taxable_value`, `igst/cgst/sgst`, `itc_available`, `match_status` ∈ {matched, amount_differs, not_in_books}, `invoice_id`. Matching only, no filing |
 | `assistant_turns` *(v2.3)* | `user_id`, `question`, `tool_calls jsonb` (tool names + arguments, not results), `answer`, `model_id`, `prompt_version`, `grounded` (every ₹ figure found in tool results) |
+| `legal_entities`, `entity_memberships` *(v3.0)* | entity: `name`, `country` (IN, AE, …), `base_currency`, `tax_regime` ∈ {in_gst, ae_vat}, `tax_id` (GSTIN or TRN), `state_code` (India only), `erp_connection_id` (nullable); membership: `user_id`, `entity_id`. Business documents gain a nullable `entity_id`; existing rows belong to the org's default entity |
+| `fx_rates` *(v3.0)* | `base_currency`, `quote_currency`, `rate NUMERIC(18,8)`, `as_of date`, `entered_by`; unique per pair and date. Converted money is rounded once, `ROUND_HALF_UP`, to 2 decimals |
+| `workflow_definitions`, `workflow_versions` *(v3.0)* | definition: `key`, `name`, `subject_type` (request, invoice, supplier, rfq, contract, custom), `active_version_id`; version: `number`, `definition jsonb`, `sha256`, `status` ∈ {draft, published, retired}, `drafted_by_ai`, `published_by`, `published_at`. Published rows are never updated |
+| `workflow_instances`, `workflow_steps` *(v3.0)* | instance: `version_id` (pinned), `subject_type`, `subject_id`, `status` ∈ {running, waiting, completed, cancelled, failed}, `context jsonb`; step: `node_id`, `kind` ∈ {condition, approval, task, notify, wait, erp_draft}, `status`, `assignee_id`, `decided_by`, `decision`, `reason`, `due_at` |
+| `request_types`, `form_fields` *(v3.0)* | type: `key`, `name`, `workflow_definition_id`, `active`; field: `request_type_id`, `key`, `label`, `kind` ∈ {text, number, money, date, choice, file, user}, `required`, `options jsonb`, `position`. `purchase_requests` gains `request_type_id` and `custom_values jsonb` |
+| `notifications` *(v3.0)* | `user_id`, `kind`, `title`, `link`, `read_at` |
+| `api_keys` *(v3.0)* | `user_id`, `name`, `prefix`, `key_hash` (sha256; the key is shown once), `scopes jsonb`, `last_used_at`, `expires_at`, `revoked_at` |
+| `webhook_endpoints`, `webhook_deliveries` *(v3.0)* | endpoint: `url` (allow-listed like ERP hosts), `secret_encrypted`, `events jsonb`, `active`; delivery: `event`, `payload_sha256`, `status`, `attempts`, `response_code` |
+| `suppliers`, `supplier_users`, `supplier_invites` *(v3.0)* | supplier: `legal_name`, `country`, `tax_id`, `pan`, `status` ∈ {invited, submitted, in_review, approved, rejected, handed_over, active}, `vendor_id` (set when the ERP vendor is synced), `invited_by`; user: `supplier_id`, `email`, `password_hash` (a separate login realm from `users`); invite: `token_hash`, `expires_at`, `used_at` |
+| `supplier_documents`, `supplier_checks` *(v3.0)* | document: `supplier_id`, `kind` (tax certificate, PAN, bank proof, …), `document_id`, `expires_on`; check: `rule`, `result` ∈ {pass, fail, warn}, `detail`, `rule_set_version` |
+| `risk_assessments`, `sanctions_entries` *(v3.0)* | assessment: `supplier_id`, `rule_set_version`, `score`, `level` ∈ {low, medium, high, critical}, `results jsonb`, `answers jsonb`, `reviewed_by`, `next_review_on`; sanctions: `name`, `country`, `list_name` (synthetic list only) |
+| `rfq_events`, `rfq_lines`, `rfq_invites` *(v3.0)* | event: `number`, `title`, `request_id` (nullable), `currency`, `closes_at`, `status` ∈ {draft, open, closed, awarded, cancelled}, `scoring jsonb` (disclosed weights), `created_by`; line: `description`, `qty`, `uom`; invite: `supplier_id`, `sent_at` |
+| `quotes`, `quote_lines`, `rfq_awards` *(v3.0)* | quote: `rfq_id`, `supplier_id`, `currency`, `freight`, `payment_terms_days`, `delivery_days`, `valid_until`, `status`; line: `rfq_line_id`, `rate`, `tax_rate`; award: `quote_id`, `awarded_by`, `reason`, `comparison_snapshot jsonb` (the inputs the decision was made on) |
+| `contracts`, `contract_versions`, `contract_terms`, `contract_obligations` *(v3.0)* | contract: `supplier_id` or `vendor_id`, `title`, `status` ∈ {draft, in_review, active, expired, terminated}, `owner_id`; version: `document_id`, `number`; term: `field` (party, value, start, end, renewal, notice period, …), `value`, `evidence jsonb` (quoted text + page), `source` ∈ {ai, human}, `confirmed_by`; obligation: `description`, `due_on`, `owner_id`, `status` |
+| `payment_runs` *(v3.0, additive)* | `currency`, `rail` ∈ {neft_rtgs, swift, uae_local, sepa}, `fx_rate`, `fx_as_of`; profiles gain `iban`, `swift_bic`, `country` |
+| `virtual_cards`, `card_transactions` *(v3.0, simulated)* | card: `request_id`, `vendor_id`, `limit_amount`, `currency`, `expires_on`, `merchant_lock`, `status` ∈ {requested, active, frozen, closed}, `last4`, `issuer_ref`, `issued_by`; transaction: `card_id`, `amount`, `merchant`, `occurred_at`, `status`, `matched_invoice_id` |
+| `action_proposals`, `agent_runs` *(v3.0)* | proposal: `user_id`, `kind`, `payload jsonb`, `payload_sha256`, `expires_at`, `status` ∈ {proposed, submitted, expired, discarded}; run: `agent`, `user_id`, `tool_calls jsonb`, `outcome`, `model_id`, `prompt_version` |
+| `custom_objects`, `custom_records`, `saved_views` *(v3.0)* | object: `key`, `name`, `request_type_id` (its form), `workflow_definition_id`; record: `object_id`, `values jsonb`, `status`; view: `owner_id`, `subject`, `filters jsonb`, `columns jsonb` |
+| `users` *(v3.0, additive)* | `totp_secret_encrypted`, `mfa_enabled`, `failed_logins`, `locked_until`, `password_changed_at` |
 
 **Database grants:** the application role gets `INSERT, SELECT` on `audit_events`, with no `UPDATE` or `DELETE`. Migrations run as a separate owner role.
 
@@ -301,7 +357,25 @@ Base = value before GST. 194C: 1% individual/HUF, 2% others, when one payment > 
 194J: 10% professional, 2% technical, when the year > ₹50,000. 194Q: 0.1% on the year's purchases above ₹50,00,000.
 No valid PAN: at least 20% (5% under 194Q). Rounded to the nearest rupee. Net paid = gross − TDS.
 
-**Deferred** (designed for, not built): credit notes and debit notes (a negative invoice linked to the original), PO amendments, multiple currencies, TDS (tax deducted at source).
+### 6d. Tax regimes *(v3.0, `matching/tax.py`; rule-set version bumped; to be confirmed by a CA and a UAE tax practitioner)*
+
+The legal entity's `tax_regime` selects the tax checks. Rules 1–6 and 9–11 above are the same for every regime.
+- **`in_gst` (India):** rules 7 and 8 exactly as written above. Tax columns `cgst`, `sgst`, `igst`.
+- **`ae_vat` (UAE):** the supplier tax ID is a TRN: 15 digits starting with `100`. One tax column (`vat`); the standard rate is 5%, and a line may be zero-rated or exempt only when the invoice says so. There is no place-of-supply split, so rule 8 does not run. Arithmetic tolerance is 1.00 in the invoice currency.
+- An invoice in a currency other than the PO's currency is exception `CURRENCY_MISMATCH`. Orrfin never converts to make a match pass.
+
+### 6e. Supplier-risk rules *(v3.0, `supplier_risk/rules.py`, `SUPPLIER_RISK_RULE_SET_VERSION`)*
+
+Pure and versioned, like §6b. Run at onboarding review, on every profile change, and on the review date.
+- **Block** (cannot be approved): tax ID fails its format check; name on the synthetic sanctions list; a required document missing or expired; bank account shared with another supplier.
+- **Hold** (reviewer must write a reason): bank details changed in the last 30 days; no bank proof; questionnaire answer flagged (for example, no data-security policy for a software supplier); a document expiring within 30 days.
+- **Score** = fixed weights over the failed and warned rules; **level** from fixed bands. A `critical` level adds a hold on new POs and payments for that supplier until a named reviewer clears it.
+
+### 6f. Sourcing comparison *(v3.0, `sourcing/compare.py`)*
+
+For each quote: landed cost = Σ(line qty × rate) + tax + freight, in the RFQ currency (a quote in another currency is converted at the stored rate for the RFQ's closing date and marked "converted"). The comparison shows landed cost, delivery days, payment terms and validity side by side. The score uses the weights saved on the RFQ **before** it opens (default: price 60, delivery 20, payment terms 10, supplier risk 10) and is shown with its arithmetic. The score is a recommendation: a named person awards and writes a reason when the award is not the top score.
+
+**Deferred** (designed for, not built): PO amendments. *(v3.0: credit and debit notes become a negative invoice linked to the original in Step 31; currencies and tax regimes are §6d; TDS is §6c.)*
 
 ---
 
@@ -380,6 +454,14 @@ No valid PAN: at least 20% (5% under 194Q). Rounded to the nearest rupee. Net pa
   - *(v2.1)* Steps run in order; approving step 2 before step 1 is refused.
   - *(v2.4)* A category's extra step (e.g. IT security review) can be decided only by its named reviewer; no approval limit applies to it, because it reviews fitness, not spend.
   - *(v2.4)* While an invoice has an open question, it cannot be approved; the person asked can never approve it.
+  - *(v3.0)* A workflow definition can add steps, conditions and reviewers, but it cannot switch off any rule in this list: the rules are checked in `procurement.decision_refusal` (and its invoice and payment equivalents) on every decision, whatever the workflow says.
+  - *(v3.0)* The person who drafted a workflow version, or asked the AI to draft it, may publish it only if they are an admin; the publish is audited with the version's hash. A second admin is required when the change lowers an approval requirement.
+  - *(v3.0)* The person who invited or edited a supplier cannot approve its onboarding. The person who created an RFQ may award it, but not to a supplier they onboarded, and never without a reason when the award is not the top score.
+  - *(v3.0)* The person who requested a virtual card cannot issue it.
+- **Supplier portal (v3.0):** a separate login realm (`supplier_users`, its own session cookie and routes). A supplier session can read and write only rows for its own `supplier_id`; it can never reach an employee route. Invitation links are single-use, hashed at rest and expire in 7 days.
+- **Stronger sign-in (v3.0):** TOTP second factor (required for admin and finance), lockout after repeated wrong passwords, session ID rotated at login, CSRF token on every state-changing request, rate limits on login and AI endpoints, strict security headers.
+- **Row-level security (v3.0):** Postgres policies on `org_id` for every business table, in addition to the query filter. The application role cannot read another org's rows even with a wrong query.
+- **API keys and MCP (v3.0):** a key belongs to one user and acts with that user's role and org; stored hashed; revocable; every call is logged.
 - **Approval chain (v2.1), from `approval_policies`.** Demo defaults, to be confirmed by the founder:
 
   | Request amount | Steps, in order |
@@ -476,7 +558,17 @@ Roughly $20–40 for the week. After the pitch, snapshot RDS, then stop or delet
 | 16–20 | **M6b Connectors** *(v2.2)*. Tally (live) + BUSY (sim); Business Central (live) + F&O (sim); SAP S/4HANA (sandbox read + sim write) + Business One (sim); Oracle Fusion + NetSuite (sim); Zoho Books + Odoo (live). | Each adapter passes the shared contract suite, plus a failure-injection test for its own lookup key (POST succeeds, then a timeout → lookup → exactly one document). Each **live** connector: "Sync" shows that ERP's POs in Orrfin, and one approved invoice creates exactly one draft in that ERP (checked in its UI). The Connectors page shows the right badge for each. |
 | 21–24 | **M6c Dashboard, Rules page, workflows and AI assistant** *(v2.3/v2.4)*. Workflows and budgets (Step 22). Insights module + `/home`; `/rules` with audited tier and buyer edits; `Assistant` port (Gemini, Claude, fake) + read-only tools + side panel; intake agent; assistant evaluation set. | Insights numbers tested on a fixed dataset; org A cannot see org B; tier edits refused when gapped or overlapping, non-admin → 403, in-flight chains unchanged. Assistant: each tool honours role and org scope; links only to IDs a tool returned; unmatched ₹ figure → warning; AI outage → panel says unavailable, nothing else breaks. Intake: rates never AI-guessed; a drafted request still blocks self-approval. Assistant eval passes in CI (fake model); Gemini report saved. |
 | 25–27 | **M6d Payments, close and India gaps** *(v2.4)*. Simulated payments with risk checks and TDS; bank reconciliation; close cockpit; GSTR-2B matching; photo bills. | TDS and net to the paisa; every payment SoD rule → 403; bank file total = run total; the mock bank statement reconciles 100% by UTR; closed month → 409; 2B matching on the fixture; photo invoice end to end. |
-| 28–29 | **M7 Deploy, rehearse and freeze.** AWS deploy, security review, 3 rehearsals, backup video, tag `demo-final`. | Demo runs cleanly twice in a row on the public URL. Trust page wording matches §13. RDS automated backups confirmed. |
+| 30 | **M8 Design system + app shell** *(v3.0)*. Tokens, grouped navigation, top bar, command palette, shared page/table/chart components; the existing pages moved into the shell. | Every existing page works unchanged in the new shell; tsc, lint and build clean; keyboard navigation and WCAG AA contrast checked; browser walk-through per role. |
+| 31 | **M9 Platform foundation** *(v3.0)*. Legal entities, currencies, FX table, tax regimes (§6d); workflow engine (ADR 0010); intake forms; notifications, signed webhooks, API keys; credit and debit notes. | The 12 eval invoices still give their expected outcomes; UAE VAT scenarios pass; the default workflow template reproduces every Step 5 approval test; a published version cannot be edited; a simulation equals the real run; webhook signature verifies and a private-network URL is refused. |
+| 32 | **M10 Supplier onboarding + risk** *(v3.0)*. Invite, portal, documents, checks (§6e), review, handover; risk assessments. | A supplier session cannot read another supplier or any employee route; inviter approving → 403; each block and hold rule has a test; a critical supplier holds new POs and payments; the synced ERP vendor links back. |
+| 33 | **M11 Sourcing + contracts** *(v3.0)*. RFQs, portal quotes, comparison (§6f), award; contract upload, term extraction with evidence, obligations and renewals. | Landed cost and score to the paisa on a fixed dataset; award without a reason when not top score → 422; award → request → draft PO exactly once; a quote is invisible to other suppliers; contract terms carry page evidence and stay "unconfirmed" until a person confirms; the injection contract cannot set a term without evidence. |
+| 34 | **M12 Global payments + vendor cards (simulated)** *(v3.0)*. | Converted totals match the stored rate to 2 decimals; bad IBAN/SWIFT refused; every Step 25 SoD test still passes per currency; card over limit, after expiry or at another merchant is declined; requester issuing their own card → 403. |
+| 35 | **M13 AI layer** *(v3.0)*. Chat home, proposal tools, workflow-builder agent, superagents, MCP server, evaluation set of 100+ cases. | A proposal executes only for its own user, once, before expiry, with an unchanged payload; the AI cannot publish a workflow (no tool exists, and the endpoint refuses a non-admin); every MCP tool honours role and org; injection and cross-org cases pass in CI with the scripted model; real-model report saved. |
+| 36 | **M14 Connectors + integrations** *(v3.0)*. Eight new adapters; integrations gallery. | Each new adapter passes the shared contract suite and its lost-reply failure test; each is labelled Simulated with its unverified facts listed in `docs/ERP_CONNECTORS.md`. |
+| 37 | **M15 Spend insights, PDFs, App Studio** *(v3.0)*. | Spend totals equal direct SQL on a fixed dataset; commitment, invoiced and paid never double count; each PDF opens and shows the right parties and totals; a custom object's records are org-scoped and follow its workflow. |
+| 38 | **M16 Security hardening + attack pass** *(v3.0)*. MFA, CSRF, lockout, rate limits, headers, row-level security; attack tests for every product. | Every finding has a failing-then-passing test in `backend/tests/security/`; org A cannot read org B through the API, assistant, MCP, portal, exports or files; dependency audits clean or each exception explained in `docs/SECURITY_REVIEW.md`. |
+| 39–40 | **M17 Cleanup, structure and docs** *(v3.0)*. Dead code removed, adapters grouped per ERP, module layout made uniform, ARCHITECTURE/README/CONNECT_ERPS rewritten. | No file is unreferenced; every module starts with its docstring; the full suite, tsc, lint and build are green after every move. |
+| 28–29 | **M7 Deploy, rehearse and freeze** *(runs after Step 40 in v3.0)*. AWS deploy, security review, 3 rehearsals, backup video, tag `demo-final`. | Demo runs cleanly twice in a row on the public URL. Trust page wording matches §13. RDS automated backups confirmed. |
 
 **Stretch goals** (only after M6b passes). *(v2.2: SAP sandbox and Tally moved into M6b.)*
 - Vendor quotes (attach 1–3 quotes, pick one before the PO).

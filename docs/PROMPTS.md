@@ -650,6 +650,8 @@ Finish: PROGRESS.md, commit "step 27", reply ≤10 lines.
 
 ## Step 28 — Put it on AWS (public demo link)
 
+> *(v3.0)* Steps 28 and 29 now run **after Step 40**. The platform steps 30–40 are listed below Step 29.
+
 **By hand first:** BUILD_PLAN §10 **B, C, E**: S3 bucket, RDS database, EC2 server, Elastic IP, DNS.
 
 `/model sonnet` · **Skills:** `ecc:deployment-patterns`, `ecc:docker-patterns`
@@ -682,6 +684,152 @@ Use skills: ecc:security-review, then gstack-qa on the public URL.
 - Write docs/DEMO_SCRIPT.md: click-by-click for my pitch, with the exact demo request and file to use at each step, and which ERP to make active when.
 Done when: the demo runs cleanly twice in a row.
 Finish: PROGRESS.md, tag "demo-final", reply ≤12 lines.
+```
+
+---
+
+# Platform v3.0 (Steps 30–40)
+
+Approved 12 Nov 2026 (BUILD_PLAN v3.0, ADR 0009, ADR 0010). One step per session. Every step: read CLAUDE.md and
+docs/PROGRESS.md first; tests before money, permission or retry logic; finish with the full suite, tsc, lint and
+build green, a browser walk-through per role, ≤8 lines in PROGRESS.md and a commit.
+
+## Step 30 — Design system + app shell
+
+**Skills:** `frontend-design`, `shadcn`; review with `gstack-design-review`
+
+```
+STEP 30 — App shell. Read BUILD_PLAN change 37, §11 M8, docs/BRAND.md.
+- Extend frontend/src/styles/tokens.css (type scale, spacing, elevation, status colours); keep the brand colours.
+- Shell in app/(app)/layout.tsx: grouped left navigation by product, top bar (entity switcher, search, notifications,
+  Ask Orrfin), command palette (Ctrl+K). Shared PageHeader, DataTable, EmptyState, StatusBadge, chart components.
+- Move the existing pages into the shell with no behaviour change. Nav items hidden by role are still refused by the API.
+Done when: §11 M8.
+```
+
+## Step 31 — Platform foundation: entities, currencies, tax regimes, workflow engine, intake forms
+
+**Skills:** `ecc:tdd-workflow`, `ecc:postgres-patterns`
+
+```
+STEP 31 — Foundation. Read BUILD_PLAN changes 38–40, §5 (v3.0 rows), §6d, §9 (v3.0), ADR 0010.
+- Additive migration: legal_entities, entity_memberships, fx_rates, workflow_*, request_types, form_fields, notifications,
+  api_keys, webhook_*; entity_id and currency where needed (existing rows → the org's default entity, INR).
+- matching/tax.py: regime in_gst (unchanged behaviour) and ae_vat; CURRENCY_MISMATCH; credit/debit notes as a negative
+  invoice linked to the original. Tests first; bump RULE_SET_VERSION.
+- modules/workflow_engine: validator, interpreter on the jobs table, immutable versions, simulate. The v2.1 chain is the
+  default template; decision_refusal stays the only place SoD is decided.
+- modules/intake_forms, modules/notifications (in-app, email to console locally, signed webhooks through security/outbound.py).
+- UI: /automation/workflows (visual builder), /settings/forms, /settings/entities.
+Done when: §11 M9.
+```
+
+## Step 32 — Supplier onboarding, supplier portal, risk orchestration
+
+**Skills:** `ecc:tdd-workflow`, `ecc:security-review`
+
+```
+STEP 32 — Suppliers. Read BUILD_PLAN changes 41–42, §2 (v3.0 rows), §6e, §9 supplier portal.
+- modules/suppliers: invite (single-use hashed token) → portal sign-up → profile, documents, bank proof → checks → review
+  workflow → maker-checker bank verify (reuse payments) → handover; the sync links the ERP vendor back.
+- Supplier portal: its own login realm, cookie and routes under /portal; a supplier session reaches nothing else.
+- modules/supplier_risk: pure rules.py (blocks, holds, score, level), questionnaire, synthetic sanctions list, review dates;
+  critical level holds new POs and payments.
+Done when: §11 M10.
+```
+
+## Step 33 — Sourcing + AI contract orchestration
+
+**Skills:** `ecc:tdd-workflow`, `claude-api`
+
+```
+STEP 33 — Sourcing and contracts. Read BUILD_PLAN changes 43–44, §6f.
+- modules/sourcing: RFQ, invites, quotes entered in the portal, pure compare.py (landed cost, score with stored weights),
+  human award with snapshot → request → the existing approval chain → draft PO through the outbox. RFQ PDF.
+- modules/contracts: upload, AI term extraction with quoted page evidence (same contract as §7: evidence or it is not a
+  term), human confirmation, obligations, renewal tasks, rule-based playbook flags. Add an injection contract to the evals.
+Done when: §11 M11.
+```
+
+## Step 34 — Global payments + vendor cards (simulated)
+
+**Skills:** `ecc:tdd-workflow`, `ecc:hexagonal-architecture`
+
+```
+STEP 34 — Money products, simulated. Read ADR 0008, BUILD_PLAN changes 45–46, §6b, §6c.
+- ports/payment_provider.py + mock bank: runs per currency and rail, FX from fx_rates (never AI), IBAN/SWIFT/IFSC validators,
+  payment-advice PDF. Every Step 25 SoD and risk rule applies per currency.
+- ports/card_issuer.py + mock issuer; modules/cards: request-linked virtual card (limit, expiry, merchant lock), simulated
+  transactions, matching to the request/invoice, freeze and close. Every screen says "simulated".
+Done when: §11 M12.
+```
+
+## Step 35 — AI layer: chat home, proposals, workflow-builder agent, superagents, MCP
+
+**Skills:** `claude-api`, `ecc:eval-harness`
+
+```
+STEP 35 — AI layer. Read ADR 0007, ADR 0010, BUILD_PLAN change 47, §4 assistant rule.
+- /ask chat home. Proposal tools return typed cards (request, RFQ, supplier invite, workflow draft) stored in
+  action_proposals (user, payload hash, expiry); the person submits through the normal endpoint, which re-checks everything.
+- Workflow-builder agent: chat → definition → validator → diagram + simulation → admin publishes. No publish tool exists.
+- Superagents = named tool groups with an agent_runs log. app/mcp_server: the same tools under a per-user API key.
+- Evals: 100+ cases (facts, permissions, injection, cross-org, forbidden actions, stale records); facts checked against the
+  record they belong to, not only the amount.
+Done when: §11 M13.
+```
+
+## Step 36 — Eight more connectors + integrations gallery
+
+**Skills:** `ecc:api-connector-builder`, `ecc:hexagonal-architecture`
+
+```
+STEP 36 — Connectors. Read docs/ERP_CONNECTORS.md, ADR 0004, ADR 0006, BUILD_PLAN change 48.
+- QuickBooks Online, Xero, Sage Intacct, Sage 50/200, Acumatica, Focus X, Marg ERP, TallyPrime UAE VAT mode: for each,
+  check the vendor's official API documentation first, then <erp>.py + <erp>_sim.py + registry entry + canonical renderer,
+  added to tests/contract/erp_adapters.py and tests/failure/erp_write_cases.py. Mark every unverified fact.
+- /integrations gallery: ERPs, webhooks, API keys, MCP, notification channels, each with its label and verification date.
+Done when: §11 M14.
+```
+
+## Step 37 — Spend insights, generated PDFs, App Studio
+
+**Skills:** `ecc:postgres-patterns`, `dataviz`
+
+```
+STEP 37 — Insights, documents, App Studio. Read BUILD_PLAN change 49.
+- Spend cube (entity, category, vendor, cost centre, period, currency); commitment, invoiced and paid as separate measures;
+  off-contract and no-PO spend; sourcing savings; CSV and PDF export. Deterministic SQL only.
+- modules/documents/pdf.py: PO, RFQ, payment advice, audit pack. Tests read each PDF back.
+- modules/app_studio: custom object = form + workflow + list view. No customer code runs.
+Done when: §11 M15.
+```
+
+## Step 38 — Security hardening + attack pass
+
+**Skills:** `security-audit` (full audit mode), `ecc:security-review`
+
+```
+STEP 38 — Security. Read BUILD_PLAN §9 (all), §12, change 50.
+- Build: TOTP MFA, lockout, session rotation, CSRF tokens, rate limits, security headers and CSP, Postgres row-level
+  security on org_id, upload re-validation, dependency audits (pip-audit, npm audit), secret scan, non-root containers.
+- Attack every product as an outsider, a supplier, each employee role and another org: object-level access, privilege
+  escalation, SoD bypass, mass assignment, injection (SQL, CSV, XML, prompt), SSRF, upload tricks, session and CSRF,
+  proposal and outbox replay, API-key and MCP abuse. Each finding: a failing test in backend/tests/security/, the fix, a re-run.
+- Write docs/SECURITY_REVIEW.md: what was tried, what was found, what was fixed, what remains for §12.
+Done when: §11 M16.
+```
+
+## Steps 39–40 — Cleanup, structure and documentation
+
+**Skills:** `refactor-safely`, `ecc:update-docs`
+
+```
+STEPS 39–40 — Cleanup. Read ARCHITECTURE.md and the graph's dead-code report.
+- Remove a file only after the graph and a text search show no caller. Group adapters per ERP; make every module the same
+  shape (router.py, service.py, schemas.py, pure rule files); one docstring per module naming its BUILD_PLAN section.
+- Rewrite ARCHITECTURE.md, README.md and CONNECT_ERPS.md to match. Run the full suite after every move.
+Done when: §11 M17. Then continue with Step 28.
 ```
 
 ---
