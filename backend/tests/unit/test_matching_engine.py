@@ -219,3 +219,80 @@ def test_every_result_is_plain_data_for_the_explanation():
     for rule in result.as_json():
         assert set(rule) >= {"rule", "code", "status", "message", "amount_at_risk"}
         assert isinstance(rule["amount_at_risk"], str)  # Decimal as text, never float
+
+
+# --- §6d tax regimes (v3.0): UAE VAT beside Indian GST ---------------------------------------------
+
+TRN = "100234567890003"  # UAE tax registration number: 15 digits starting with 100
+
+
+def _uae_invoice(**overrides) -> InvoiceIn:
+    """The clean invoice as a UAE supplier would bill it: one VAT amount at 5%, in dirhams."""
+    uae = {"vendor_gstin": TRN, "buyer_state_code": "", "currency": "AED", "cgst": D("0.00"), "sgst": D("0.00"),
+           "vat": D("2325.00"), "total": D("48825.00")}
+    return _invoice(**{**uae, **overrides})
+
+
+def _run_uae(invoice: InvoiceIn | None = None, *, po_currency: str = "AED"):
+    lines = [replace(line, tax_rate=D("5")) for line in _po_lines()]
+    po = PoIn(erp_ref="PO-DXB-0001", status="to_bill", vendor_gstin=TRN, currency=po_currency)
+    return match(MatchInput(invoice=invoice or _uae_invoice(), po=po, po_lines=lines, tax_regime="ae_vat"))
+
+
+def test_uae_clean_match_at_five_percent_vat():
+    result = _run_uae()
+
+    assert result.outcome == "matched"
+    assert _failed(result) == set()
+
+
+def test_uae_has_no_place_of_supply_rule():
+    result = _run_uae(_uae_invoice(buyer_state_code="27"))
+
+    assert "TAX_TYPE_MISMATCH" not in _failed(result)
+
+
+@pytest.mark.parametrize("trn", ["100-2345-6789-0003", "200234567890003", "10023456789000", MH])
+def test_uae_supplier_tax_number_must_be_a_trn(trn):
+    result = _run_uae(_uae_invoice(vendor_gstin=trn))
+
+    assert "TRN_INVALID" in _failed(result)
+    assert "GSTIN_INVALID" not in _failed(result)
+
+
+def test_uae_invoice_charging_indian_gst_is_stopped():
+    invoice = _uae_invoice(vat=D("0.00"), igst=D("2325.00"))
+
+    assert "TAX_TYPE_MISMATCH" in _failed(_run_uae(invoice))
+
+
+def test_indian_invoice_charging_vat_is_stopped():
+    invoice = _invoice(cgst=D("0.00"), sgst=D("0.00"), vat=D("8370.00"))
+
+    assert "TAX_TYPE_MISMATCH" in _failed(_run(invoice))
+
+
+def test_uae_wrong_vat_amount_is_an_arithmetic_exception_reported_in_dirhams():
+    result = _run_uae(_uae_invoice(vat=D("2400.00"), total=D("48900.00")))
+
+    assert "ARITHMETIC_MISMATCH" in _failed(result)
+    message = next(r.message for r in result.rule_results if r.code == "ARITHMETIC_MISMATCH")
+    assert "AED 2,325.00" in message and "₹" not in message
+
+
+def test_an_invoice_in_another_currency_than_its_po_is_stopped_never_converted():
+    result = _run_uae(_uae_invoice(currency="USD"))
+
+    assert "CURRENCY_MISMATCH" in _failed(result)
+    assert result.amount_at_risk == D("48825.00")
+
+
+def test_indian_messages_still_print_rupees():
+    result = _run(_invoice(total=D("54900.00")))
+
+    assert any("₹" in r.message for r in result.rule_results if r.code == "ARITHMETIC_MISMATCH")
+
+
+def test_an_unknown_tax_regime_is_refused_rather_than_guessed():
+    with pytest.raises(ValueError):
+        match(MatchInput(invoice=_invoice(), po=None, po_lines=[], tax_regime="xx_unknown"))

@@ -177,3 +177,7 @@ Each step appends 8 lines or fewer: what was built, how to view it, open issues.
 - Not built yet from ADR 0010: workflow instances/steps on the jobs table and the task / wait / ERP-draft step kinds (needed first by supplier onboarding, Step 32); named-person steps exist in the API but not in the builder screen; the built-in category extra-approver step is not part of the "fewer approvals" comparison.
 - The local demo database now holds one unpublished draft workflow (from the browser check).
 - Next in Step 31: entities + currencies + tax regimes (§6d), intake forms, notifications/webhooks/API keys.
+
+**Step 31c — tax regimes in the matching engine (14 Nov).** `matching/tax.py` (pure): `in_gst` (GSTIN format + place of supply, unchanged) and `ae_vat` (TRN = 15 digits starting 100, one VAT amount, no place-of-supply rule); a regime refuses the other's tax columns (`TAX_TYPE_MISMATCH`); new `CURRENCY_MISMATCH` (invoice currency ≠ PO currency, never converted); amounts print in the invoice currency. `MatchInput.tax_regime`, `InvoiceIn.vat/currency`, `PoIn.currency` all default to India/INR. `RULE_SET_VERSION` 2026.11.1.
+- Verified: 9 new unit tests; the 12 evaluation invoices still give their DEMO_DATA outcomes; invoice pipeline + review tests pass.
+- Not wired yet: nothing sets `ae_vat` in the app, because legal entities (which carry the regime), the invoice `vat`/`currency` columns and the extraction prompt for UAE invoices are the next slice. UAE rules need a tax practitioner's sign-off (§12).

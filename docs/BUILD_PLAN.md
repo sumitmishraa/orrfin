@@ -317,7 +317,7 @@ Every business table has `id (uuid)`, `org_id (uuid, not null, indexed)`, `creat
 
 ## 6. Matching rules (deterministic, versioned)
 
-The rule set is a Python module with `RULE_SET_VERSION = "2026.09.1"`. Tolerances live in one config object and are stored with every match result.
+The rule set is a Python module with `RULE_SET_VERSION = "2026.11.1"` (2026.09.1 until v3.0; 2026.11.1 adds the §6d tax regimes and decides Indian rupee invoices exactly as before). Tolerances live in one config object and are stored with every match result.
 
 1. **Line pairing:** invoice line → PO line, tried in this order:
    1. explicit PO line reference

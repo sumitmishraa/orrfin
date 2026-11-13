@@ -7,7 +7,9 @@ decision can always be re-explained with the numbers it used. To be reviewed by 
 from dataclasses import asdict, dataclass
 from decimal import Decimal
 
-RULE_SET_VERSION = "2026.09.1"
+# 2026.11.1 (v3.0, §6d): tax regimes (India GST, UAE VAT), TRN format, CURRENCY_MISMATCH.
+# Indian invoices in rupees are decided exactly as under 2026.09.1.
+RULE_SET_VERSION = "2026.11.1"
 
 # PO statuses that still accept invoices (Orrfin's vocabulary, from adapters/erpnext.py).
 OPEN_PO_STATUSES = ("open", "to_bill")
@@ -28,6 +30,8 @@ RISK_WEIGHTS = {
     "DUPLICATE_BLOCKING": 40,
     "VENDOR_MISMATCH": 35,
     "GSTIN_INVALID": 30,
+    "TRN_INVALID": 30,
+    "CURRENCY_MISMATCH": 25,
     "PO_NOT_FOUND": 30,
     "PO_NOT_OPEN": 30,
     "QTY_EXCEEDS_RECEIPT": 25,

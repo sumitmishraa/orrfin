@@ -35,6 +35,10 @@ class InvoiceIn:
     sgst: Decimal
     igst: Decimal
     total: Decimal
+    # §6d (v3.0). `vendor_gstin` holds the supplier's tax number whatever the regime: a GSTIN in
+    # India, a TRN in the UAE. `vat` is the single tax amount on a UAE invoice.
+    vat: Decimal = Decimal("0")
+    currency: str = "INR"
 
 
 @dataclass
@@ -42,6 +46,7 @@ class PoIn:
     erp_ref: str
     status: str
     vendor_gstin: str | None
+    currency: str = "INR"
 
 
 @dataclass
@@ -74,6 +79,8 @@ class MatchInput:
     po_lines: list[PoLineIn]
     prior_invoices: list[PriorInvoice] = field(default_factory=list)
     tolerances: Tolerances = field(default_factory=Tolerances)
+    # The buying legal entity's tax regime (§6d): "in_gst" or "ae_vat".
+    tax_regime: str = "in_gst"
 
 
 @dataclass

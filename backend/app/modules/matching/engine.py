@@ -5,30 +5,16 @@ AI explanation can see exactly why an invoice passed or stopped. Fuzzy descripti
 never used to pass an invoice (§6 rule 1): a line that cannot be paired exactly is an exception.
 """
 
-import re
 from collections import defaultdict
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from app.modules.matching.config import OPEN_PO_STATUSES, RISK_WEIGHTS
+from app.modules.matching.tax import TAX_REGIMES, money, tax_id_name, tax_id_result, tax_name, tax_type_result
 from app.modules.matching.types import InvoiceLineIn, MatchInput, MatchOutcome, PoLineIn, RuleResult
 
-GSTIN_FORMAT = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
-GSTIN_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 CENT = Decimal("0.01")
 ZERO = Decimal("0")
-
-
-def _rupees(value: Decimal) -> str:
-    return f"₹{value.quantize(CENT, rounding=ROUND_HALF_UP):,}"
-
-
-def _gstin_check_char_ok(gstin: str) -> bool:
-    total = 0
-    for i, ch in enumerate(gstin[:14]):
-        product = GSTIN_CHARS.index(ch) * (1 if i % 2 == 0 else 2)
-        total += product // 36 + product % 36
-    return gstin[14] == GSTIN_CHARS[(36 - total % 36) % 36]
 
 
 def _pair(line: InvoiceLineIn, po_lines: list[PoLineIn], pct: Decimal) -> tuple[PoLineIn | None, str]:
@@ -53,20 +39,20 @@ def _pair(line: InvoiceLineIn, po_lines: list[PoLineIn], pct: Decimal) -> tuple[
 
 
 def match(inp: MatchInput) -> MatchOutcome:
-    inv, tol = inp.invoice, inp.tolerances
+    inv, tol, regime = inp.invoice, inp.tolerances, inp.tax_regime
+    if regime not in TAX_REGIMES:
+        # An unknown regime must never fall back to another country's tax rules.
+        raise ValueError(f"Unknown tax regime {regime!r}; expected one of {TAX_REGIMES}.")
     results: list[RuleResult] = []
     pairings: dict[int, tuple[str, str]] = {}
+    tax_id = tax_id_name(regime)
 
-    # Rule 7 — GSTIN format (the check character is advisory only until verified with GSTN).
-    gstin_ok = bool(GSTIN_FORMAT.match(inv.vendor_gstin or ""))
-    if not gstin_ok:
-        results.append(RuleResult("gstin", "GSTIN_INVALID", "fail",
-                                  f"The vendor GSTIN “{inv.vendor_gstin}” is not in a valid GSTIN format.", inv.total))
-    elif not _gstin_check_char_ok(inv.vendor_gstin):
-        results.append(RuleResult("gstin", "GSTIN_CHECKSUM", "warn",
-                                  "The GSTIN's last character does not match its check digit (advisory only)."))
-    else:
-        results.append(RuleResult("gstin", "OK", "pass", "The vendor GSTIN is well formed."))
+    def _rupees(value: Decimal) -> str:
+        """The amount in the invoice's own currency (₹ for rupees; the name is kept from rule set 2026.09.1)."""
+        return money(value, inv.currency)
+
+    # Rule 7 / §6d — the supplier's tax number is well formed for this regime (GSTIN or TRN).
+    results.append(tax_id_result(regime, inv.vendor_gstin, inv.total))
 
     # Rule 10 (and a missing PO) — without an open PO nothing can be matched against.
     if inp.po is None:
@@ -79,13 +65,19 @@ def match(inp: MatchInput) -> MatchOutcome:
     else:
         results.append(RuleResult("po_state", "OK", "pass", f"PO {inp.po.erp_ref} is open."))
 
+    # §6d — the invoice must be in the PO's currency. Orrfin never converts to make a match pass.
+    if inp.po is not None and inv.currency != inp.po.currency:
+        results.append(RuleResult("currency", "CURRENCY_MISMATCH", "fail",
+                                  f"The invoice is in {inv.currency} but PO {inp.po.erp_ref} is in "
+                                  f"{inp.po.currency}.", inv.total))
+
     # Rule 6 — the invoice must come from the PO's vendor.
     if inp.po is not None:
         if inp.po.vendor_gstin and inv.vendor_gstin == inp.po.vendor_gstin:
-            results.append(RuleResult("vendor", "OK", "pass", "The invoice GSTIN is the PO vendor's GSTIN."))
+            results.append(RuleResult("vendor", "OK", "pass", f"The invoice {tax_id} is the PO vendor's {tax_id}."))
         else:
             results.append(RuleResult("vendor", "VENDOR_MISMATCH", "fail",
-                                      f"The invoice GSTIN {inv.vendor_gstin} is not the PO vendor's GSTIN "
+                                      f"The invoice {tax_id} {inv.vendor_gstin} is not the PO vendor's {tax_id} "
                                       f"{inp.po.vendor_gstin}.", inv.total))
 
     # Rule 1 — pair every invoice line with a PO line.
@@ -164,30 +156,19 @@ def match(inp: MatchInput) -> MatchOutcome:
     po_rates = {p.tax_rate for p in inp.po_lines}
     uniform_rate = po_rates.pop() if len(po_rates) == 1 else None
     taxable_rates = [(paired[l.line_no].tax_rate if l.line_no in paired else uniform_rate, l.amount) for l in inv.lines]
+    # Every tax column counts toward the total, whichever regime: a tax amount in the wrong
+    # column is reported by the tax-type rule below, not hidden from the arithmetic.
+    tax_charged = inv.cgst + inv.sgst + inv.igst + inv.vat
     if inp.po is not None and all(rate is not None for rate, _ in taxable_rates):
         expected_tax = sum(((amount * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
                             for rate, amount in taxable_rates), ZERO)
-        check("Tax at the PO's GST rates", expected_tax, inv.cgst + inv.sgst + inv.igst)
-    check("Subtotal + tax vs total", inv.subtotal + inv.cgst + inv.sgst + inv.igst, inv.total)
+        check(f"Tax at the PO's {tax_name(regime)} rates", expected_tax, tax_charged)
+    check("Subtotal + tax vs total", inv.subtotal + tax_charged, inv.total)
     if not arithmetic_failed:
         results.append(RuleResult("arithmetic", "OK", "pass", "Lines, tax and total add up."))
 
-    # Rule 8 — place of supply: same state → CGST + SGST; different state → IGST.
-    vendor_state = inv.vendor_gstin[:2] if (inv.vendor_gstin or "")[:2].isdigit() else (
-        (inp.po.vendor_gstin or "")[:2] if inp.po else "")
-    if vendor_state == inv.buyer_state_code:
-        if inv.igst > 0:
-            results.append(RuleResult("tax_type", "TAX_TYPE_MISMATCH", "fail",
-                                      f"Vendor and buyer are both in state {vendor_state}, so CGST + SGST applies, "
-                                      f"but the invoice charges IGST {_rupees(inv.igst)}.", inv.igst))
-        else:
-            results.append(RuleResult("tax_type", "OK", "pass", "Same-state supply taxed as CGST + SGST."))
-    elif inv.cgst + inv.sgst > 0:
-        results.append(RuleResult("tax_type", "TAX_TYPE_MISMATCH", "fail",
-                                  f"The vendor (state {vendor_state}) is in another state, so IGST applies, but the "
-                                  f"invoice charges CGST + SGST {_rupees(inv.cgst + inv.sgst)}.", inv.cgst + inv.sgst))
-    else:
-        results.append(RuleResult("tax_type", "OK", "pass", "Inter-state supply taxed as IGST."))
+    # Rule 8 / §6d — the right kind of tax for the regime (India: place of supply; UAE: VAT only).
+    results.append(tax_type_result(regime, inv, inp.po.vendor_gstin if inp.po else None))
 
     # Rule 9 — duplicates: same file, or same key (+ same total → blocking).
     duplicate = False
