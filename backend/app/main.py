@@ -27,6 +27,8 @@ from app.modules.review.router import router as review_router
 from app.modules.rules.router import router as rules_router
 from app.modules.workflows.router import router as workflows_router
 from app.modules.sync.router import router as sync_router
+from app.modules.workflow_engine.router import router as workflow_engine_router
+from app.security.http import install_http_guards
 
 
 class HealthResponse(BaseModel):
@@ -43,8 +45,11 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type"],
+        # X-Requested-With is the app's own request marker (security/http.py). It is allowed only
+        # for the web app's origin above, which is exactly what makes it proof against forgery.
+        allow_headers=["Content-Type", "X-Requested-With"],
     )
+    install_http_guards(app, settings)
 
     @app.get("/health", response_model=HealthResponse, tags=["system"])
     def health() -> HealthResponse:
@@ -73,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(bank_router)
     app.include_router(close_router)
     app.include_router(gst_router)
+    app.include_router(workflow_engine_router)
     return app
 
 

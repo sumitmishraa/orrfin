@@ -103,6 +103,19 @@ class UserSession(TimestampMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class LoginThrottle(TimestampMixin, Base):
+    """Wrong-password counter per email (auth/throttle.py, §9). Holds a hash of the email only.
+
+    No org_id on purpose: it is written before anyone is logged in, also for unknown emails.
+    """
+    __tablename__ = "login_throttles"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 
 class ErpConnection(TimestampMixin, Base):
     """One way an org can reach one ERP: simulated (fixtures) or live (its own keys). §5 v2.2, ADR 0004/0006.
@@ -706,3 +719,44 @@ class Gstr2bLine(TimestampMixin, Base):
     itc_available: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     match_status: Mapped[str] = mapped_column(String(16), nullable=False)
     invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id"))
+
+
+# --- Workflow engine (BUILD_PLAN v3.0 change 39, ADR 0010) ---------------------------------------
+
+WORKFLOW_VERSION_STATUSES = ("draft", "published", "retired")
+
+
+class WorkflowDefinition(TimestampMixin, Base):
+    """One named workflow of an org, e.g. "request-approval". Its steps live in its versions."""
+    __tablename__ = "workflow_definitions"
+    __table_args__ = (UniqueConstraint("org_id", "key"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    key: Mapped[str] = mapped_column(String(60), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    subject_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    # The version now in use, or NULL while only drafts exist. Not a foreign key: versions point
+    # at their definition already, and a two-way key would make the first insert impossible.
+    active_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+
+class WorkflowVersion(TimestampMixin, Base):
+    """One saved set of steps. Once published it is never edited: a change is a new version."""
+    __tablename__ = "workflow_versions"
+    __table_args__ = (
+        CheckConstraint(_in("status", WORKFLOW_VERSION_STATUSES), name="status"),
+        UniqueConstraint("definition_id", "number"),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    definition_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workflow_definitions.id"), nullable=False, index=True)
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    definition: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    # SHA-256 of the definition, written into the publish audit event: proof of exactly what went live.
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(12), nullable=False, server_default="draft")
+    drafted_by_ai: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    published_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -94,7 +94,9 @@ def client(db):
 
     from app.main import create_app
 
-    with TestClient(create_app()) as test_client:
+    # The header the Orrfin web app adds to every call (security/http.py). Tests of what happens
+    # without it build their own client (tests/security/).
+    with TestClient(create_app(), headers={"X-Requested-With": "orrfin"}) as test_client:
         yield test_client
 
 

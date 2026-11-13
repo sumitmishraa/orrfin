@@ -33,3 +33,11 @@ itself would let one bad or manipulated prompt change who approves money.
 - Rules-page tier edits keep working: they edit the default template's parameters and still apply only
   to chains started after the edit.
 - The simulation result is stored with the publish audit event, so a reviewer can see what the admin saw.
+
+## Status of the build (14 Nov 2026)
+Built: the definition format, validator, deterministic route evaluation, immutable versions, simulate,
+publish with the second-admin rule, and the request approval chain reading the published version.
+For requests the chain is still copied into `request_approvals` when approval starts, which is what
+pins a running request to the steps it started with; no separate instance table was needed for that.
+Not built yet: instances and steps on the jobs table and the `task`, `wait` and `erp_draft` step kinds.
+They arrive with the first record type that needs a non-approval step (supplier onboarding, Step 32).

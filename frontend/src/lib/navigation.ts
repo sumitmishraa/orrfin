@@ -10,7 +10,7 @@
 import {
   ArrowLeftRight, BadgeCheck, Bell, Building2, Cable, CalendarCheck, FilePlus2, FileText, Gauge, Inbox,
   Landmark, ListChecks, Package, Receipt, ScrollText, Settings, ShieldCheck, ShoppingCart, SlidersHorizontal,
-  Wallet, type LucideIcon,
+  Wallet, Workflow, type LucideIcon,
 } from "lucide-react";
 
 import type { Role } from "@/lib/types";
@@ -71,6 +71,12 @@ export const NAV_AREAS: NavArea[] = [
       { href: "/rules", label: "Rules", icon: SlidersHorizontal },
       { href: "/audit", label: "Audit trail", icon: ScrollText },
       { href: "/trust", label: "Trust", icon: BadgeCheck },
+    ],
+  },
+  {
+    key: "automation", label: "Automate", summary: "Who must approve what, and when", icon: Workflow,
+    items: [
+      { href: "/automation/workflows", label: "Approval workflow", icon: Workflow, roles: ADMIN },
     ],
   },
   {

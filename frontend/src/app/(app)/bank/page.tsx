@@ -11,7 +11,7 @@ import { Upload } from "lucide-react";
 
 import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
 import { Button } from "@/components/ui/button";
-import { post } from "@/lib/api";
+import { APP_HEADERS, post } from "@/lib/api";
 import { formatDate, formatINR } from "@/lib/format";
 import { useApi } from "@/lib/use-api";
 
@@ -40,7 +40,7 @@ export default function BankPage() {
     body.append("file", file);
     try {
       // Multipart upload: plain fetch, so the browser sets the form boundary itself.
-      const response = await fetch("/api/bank-statements", { method: "POST", body, credentials: "same-origin" });
+      const response = await fetch("/api/bank-statements", { method: "POST", body, credentials: "same-origin", headers: APP_HEADERS });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof json.detail === "string" ? json.detail : "Upload failed.");
       setData(json as View);

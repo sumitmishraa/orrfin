@@ -30,6 +30,8 @@ from app.models import (
 )
 from app.modules.audit.service import record_event
 from app.modules.erp_outbox.po import queue_po
+from app.modules.workflow_engine import service as workflow_service
+from app.modules.workflow_engine.evaluate import approval_steps
 
 CENT = Decimal("0.01")
 EDITABLE_BY_REQUESTER = ("draft", "returned")
@@ -222,14 +224,24 @@ def _policy_steps(db: Session, org_id: uuid.UUID, amount: Decimal) -> list[str]:
 CATEGORY_STEP = "category_reviewer"
 
 
-def chain_preview(db: Session, org_id: uuid.UUID, category_id: uuid.UUID | None, amount: Decimal) -> list[dict]:
+def chain_preview(db: Session, org_id: uuid.UUID, category_id: uuid.UUID | None, amount: Decimal, *,
+                  cost_center: str | None = None, currency: str = "INR") -> list[dict]:
     """The steps a request of this amount and category would need, in order (no side effects).
 
-    The amount tier comes first; a category with an extra approver adds one named step after it
-    (Step 22, e.g. "IT security review" for software).
+    If the org has published a "request-approval" workflow (v3.0, ADR 0010), its definition
+    chooses the steps. Otherwise the built-in rule applies: the amount tier comes first; a
+    category with an extra approver adds one named step after it (Step 22, e.g. "IT security
+    review" for software). Either way this only lists steps: who may decide each one is
+    always checked by `decision_refusal`.
     """
-    steps = [{"role": role, "label": None, "approver_id": None} for role in _policy_steps(db, org_id, amount)]
     category = db.get(Category, category_id) if category_id else None
+    published = workflow_service.active_version(db, org_id, workflow_service.REQUEST_APPROVAL_KEY)
+    if published is not None:
+        return approval_steps(published.definition, {
+            "amount": amount, "currency": currency, "cost_center": cost_center,
+            "category": category.name if category else None,
+        })
+    steps = [{"role": role, "label": None, "approver_id": None} for role in _policy_steps(db, org_id, amount)]
     if category is not None and category.extra_approver_id is not None:
         steps.append({"role": CATEGORY_STEP, "label": category.extra_step_label or f"{category.name} review",
                       "approver_id": category.extra_approver_id})
@@ -242,7 +254,8 @@ def _start_chain(db: Session, request: PurchaseRequest) -> list[str]:
     The chain is copied into request_approvals here, so later edits to tiers or categories
     (Rules page) never change a chain that is already running.
     """
-    steps = chain_preview(db, request.org_id, request.category_id, request.amount)
+    steps = chain_preview(db, request.org_id, request.category_id, request.amount,
+                          cost_center=request.cost_center, currency=request.currency)
     request.approval_round += 1
     for number, step in enumerate(steps, start=1):
         db.add(RequestApproval(org_id=request.org_id, request_id=request.id, round=request.approval_round,

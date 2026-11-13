@@ -13,7 +13,7 @@ import { InvoiceStatus } from "@/components/invoice-status";
 import { EmptyState, ErrorNotice, Loading, PageHeader, table } from "@/components/page";
 import { useMe } from "@/components/session";
 import { Button } from "@/components/ui/button";
-import { API_URL } from "@/lib/api";
+import { API_URL, APP_HEADERS } from "@/lib/api";
 import { formatDate, formatINR } from "@/lib/format";
 import type { InvoiceDetail, InvoiceSummary } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
@@ -30,7 +30,7 @@ function UploadButton() {
     const form = new FormData();
     form.append("file", file);
     // Multipart upload: no JSON content type, so this bypasses the JSON helper on purpose.
-    const response = await fetch(`${API_URL}/invoices`, { method: "POST", body: form, credentials: "same-origin" });
+    const response = await fetch(`${API_URL}/invoices`, { method: "POST", body: form, credentials: "same-origin", headers: APP_HEADERS });
     const body = await response.json().catch(() => ({}));
     setBusy(false);
     if (!response.ok) {

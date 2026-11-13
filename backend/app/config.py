@@ -8,7 +8,7 @@ file for local development. Real secrets never live in the repo: only
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     session_hours: int = 12
     # Browsers only send Secure cookies over HTTPS; local development is plain HTTP.
     session_cookie_secure: bool = False
+    # Password guessing (§9): this many wrong passwords for one email locks it for this long.
+    login_max_failures: int = 5
+    login_lock_minutes: int = 15
 
     # Where the simulated ERPNext reads its JSON fixtures (Step 4); relative to the repo root.
     erp_fixtures_dir: str = "seed/erpnext"
@@ -72,6 +75,30 @@ class Settings(BaseSettings):
     # --- Uploaded files (BUILD_PLAN §9 upload limits). Local disk now; S3 at deploy (Step 14).
     file_store_dir: str = "storage"  # relative to the repo root; git-ignored
     max_upload_bytes: int = 10 * 1024 * 1024
+
+    @model_validator(mode="after")
+    def _refuse_unsafe_settings_outside_local(self) -> "Settings":
+        """Fail closed: a deployed server must not start with laptop-only safety settings.
+
+        The local defaults are convenient and unsafe on the internet (a cookie sent over plain
+        HTTP, no key for ERP credentials, a localhost web address). A forgotten setting should
+        stop the server with a clear message, not run quietly in a weak state.
+        """
+        if self.app_env == "local":
+            return self
+        problems = []
+        if not self.session_cookie_secure:
+            problems.append("SESSION_COOKIE_SECURE must be true (the login cookie may only travel over HTTPS)")
+        if self.orrfin_secret_key is None:
+            problems.append("ORRFIN_SECRET_KEY must be set (it encrypts saved ERP credentials)")
+        web_addresses = [*self.cors_origins, self.public_web_url]
+        if any(not address.startswith("https://") for address in web_addresses):
+            problems.append("CORS_ORIGINS and PUBLIC_WEB_URL must be https:// addresses of the deployed web app")
+        if self.ai_provider == "fake":
+            problems.append("AI_PROVIDER=fake returns answer keys and is for tests only")
+        if problems:
+            raise ValueError(f"Unsafe settings for APP_ENV={self.app_env}: " + "; ".join(problems))
+        return self
 
 
 @lru_cache

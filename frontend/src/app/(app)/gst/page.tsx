@@ -10,6 +10,7 @@ import Link from "next/link";
 import { Upload } from "lucide-react";
 
 import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
+import { APP_HEADERS } from "@/lib/api";
 import { formatDate, formatINR } from "@/lib/format";
 import { useApi } from "@/lib/use-api";
 
@@ -31,7 +32,7 @@ export default function GstPage() {
     body.append("file", file);
     try {
       // Multipart upload: plain fetch, so the browser sets the form boundary itself.
-      const response = await fetch("/api/gstr2b", { method: "POST", body, credentials: "same-origin" });
+      const response = await fetch("/api/gstr2b", { method: "POST", body, credentials: "same-origin", headers: APP_HEADERS });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) { setUploadError(typeof json.detail === "string" ? json.detail : "Upload failed."); return; }
       setData(json as View);

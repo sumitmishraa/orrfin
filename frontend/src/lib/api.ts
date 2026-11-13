@@ -5,6 +5,13 @@
  */
 export const API_URL = "/api";
 
+/**
+ * Sent with every call. The API refuses any request that can change data without it, because a
+ * page on another website cannot add this header to a request it forges (backend security/http.py).
+ * Uploads that call fetch() directly must spread this into their headers too.
+ */
+export const APP_HEADERS = { "X-Requested-With": "orrfin" } as const;
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -31,7 +38,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
+    headers: { "Content-Type": "application/json", ...APP_HEADERS, ...(init.headers ?? {}) },
   });
   if (response.status === 401 && !path.startsWith("/auth/")) {
     // Session expired or missing: back to the login page. A full page load on purpose, so no
