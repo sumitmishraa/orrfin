@@ -25,6 +25,7 @@ from app.config import Settings
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 APP_HEADER = "x-requested-with"
 APP_HEADER_VALUE = "orrfin"
+MCP_PATH = "/mcp"
 
 
 def forged_request_reason(method: str, headers: Mapping[str, str], web_origins: Iterable[str]) -> str | None:
@@ -47,6 +48,11 @@ def install_http_guards(app: FastAPI, settings: Settings) -> None:
     @app.middleware("http")
     async def guard(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         reason = forged_request_reason(request.method, request.headers, web_origins)
+        if (reason and request.url.path == MCP_PATH and "origin" not in request.headers
+                and request.headers.get("authorization", "").lower().startswith("bearer ")):
+            # MCP clients are programs with an API key, not browsers. A forged cross-site request cannot
+            # carry a bearer key (browsers never add one by themselves), and /mcp ignores cookies.
+            reason = None
         response: Response = JSONResponse(status_code=403, content={"detail": reason}) if reason \
             else await call_next(request)
 

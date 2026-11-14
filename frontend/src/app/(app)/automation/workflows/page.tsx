@@ -132,6 +132,7 @@ export default function WorkflowBuilderPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [described, setDescribed] = useState("");
 
   if (list.loading || (workflowId && detail.loading)) return <Loading />;
   if (list.error) return <ErrorNotice message={list.error} />;
@@ -194,6 +195,21 @@ export default function WorkflowBuilderPage() {
         title="Approval workflow"
         description="Choose who must approve a purchase request. A saved draft changes nothing; only a published version applies, and only to requests sent for approval after that."
       />
+      <div className="mb-4 rounded-xl border border-border bg-white p-4 shadow-raised">
+        <label htmlFor="describe" className="text-sm font-medium text-heading">Describe it in words (the workflow agent drafts the steps; you check, test and save)</label>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+          <textarea id="describe" className={`${inputClass} min-h-16 flex-1 py-2`} value={described} onChange={(e) => setDescribed(e.target.value)}
+                    placeholder="Manager approves every request. Finance approves above 50,000. Admin approves above 5 lakh." />
+          <Button variant="outline" disabled={busy || described.trim().length < 3} onClick={() => run(async () => {
+            const drafted = await post<{ definition: Definition; problems: string[]; not_understood: string[] }>("/agents/workflow-draft", { text: described });
+            const fromWords = toCards(drafted.definition);
+            if (drafted.problems.length || !fromWords) { setProblems(drafted.problems); return; }
+            setEdited(fromWords);
+            setSimulation(null);
+            setNotice(drafted.not_understood.length ? `Drafted. Not understood: ${drafted.not_understood.join("; ")}` : "Drafted from your words. Check the steps, test, then save.");
+          })}>Draft steps</Button>
+        </div>
+      </div>
       <div className="mb-4 flex flex-col gap-2">
         <ErrorNotice message={error} />
         {notice ? (

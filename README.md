@@ -1,8 +1,17 @@
-# Orrfin Control Gate
+# Orrfin
 
-A 7-day investor prototype: supplier invoices are read by AI, checked line by line against ERPNext purchase
-orders and goods receipts by deterministic rules, approved by a named person, and only then written to
-ERPNext as a **draft** bill. Synthetic data only; not production.
+A procurement platform built around the customer's existing ERP. It began as the P2P "Control Gate"
+(supplier invoices read by AI, checked line by line against the ERP's purchase orders and goods receipts by
+deterministic rules, approved by a named person, written back only as a **draft** bill) and, from plan v3.0,
+adds supplier onboarding and a supplier portal, supplier risk, sourcing, contracts, a workflow engine and
+intake forms, simulated global payments and vendor cards, spend insights, App Studio, an AI concierge with
+superagents, an MCP server and 19 ERP connectors. Synthetic data only; payments and cards are simulated;
+not production (see [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) for what is still open).
+
+Where each product lives in the app: Procure (requests, POs), Pay (invoices, payments, vendor cards),
+Suppliers (onboarding), Source (RFQs, contracts), Automate (workflow builder, App Studio, spend insights),
+Home → Ask Orrfin (agents), Settings (connectors, legal entities, request forms, API & webhooks).
+Suppliers use `/portal`.
 
 - Plan (source of truth): [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)
 - Build steps: [docs/PROMPTS.md](docs/PROMPTS.md) · progress log: [docs/PROGRESS.md](docs/PROGRESS.md)

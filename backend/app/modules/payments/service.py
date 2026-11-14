@@ -43,6 +43,8 @@ from app.models import (
 from app.modules.audit.service import record_event
 from app.modules.invoices.providers import get_file_store
 from app.modules.invoices.validation import fiscal_year
+from app.modules.entities.fx import CURRENCIES
+from app.modules.payments import banking
 from app.modules.payments.risk import PAYMENT_RULE_SET_VERSION, PaymentFacts, check_payment, has_block, holds
 from app.modules.payments.tds import SECTIONS, TDS_RULE_SET_VERSION, TdsInput, compute_tds
 from app.modules.workflows.budgets import rupees
@@ -84,32 +86,44 @@ def profile_for(db: Session, org_id: uuid.UUID, vendor_id: uuid.UUID) -> VendorP
 
 
 def save_profile(db: Session, user: User, vendor_id: uuid.UUID, *, pan: str | None, tds_section: str | None,
-                 payee_type: str, j_kind: str, account_name: str, bank_account: str, ifsc: str) -> VendorPaymentProfile:
+                 payee_type: str, j_kind: str, account_name: str, bank_account: str, ifsc: str | None,
+                 swift_bic: str | None = None) -> VendorPaymentProfile:
+    """Indian payees give an account number and IFSC; international payees (v3.0) an IBAN and SWIFT/BIC."""
     _require_role(user)
     vendor = db.scalar(select(Vendor).where(Vendor.id == vendor_id, Vendor.org_id == user.org_id))
     if vendor is None:
         raise NotFound("Vendor not found.")
     pan = (pan or "").strip().upper() or None
-    ifsc, bank_account = ifsc.strip().upper(), re.sub(r"\s", "", bank_account)
+    ifsc, bank_account = (ifsc or "").strip().upper() or None, re.sub(r"\s", "", bank_account).upper()
+    swift_bic = (swift_bic or "").strip().upper() or None
     if tds_section not in (None, *SECTIONS):
         raise Invalid("TDS section must be 194C, 194J, 194Q or none.")
     if payee_type not in ("individual", "company", "other") or j_kind not in ("professional", "technical"):
         raise Invalid("Choose a valid payee type.")
-    if not _ACCOUNT.match(bank_account):
-        raise Invalid("Bank account number must be 9 to 18 digits.")
-    if not _IFSC.match(ifsc):
-        raise Invalid("IFSC must look like HDFC0001234.")
+    if swift_bic is not None:
+        if ifsc is not None:
+            raise Invalid("Give an IFSC for an Indian account or a SWIFT/BIC for an IBAN, not both.")
+        if not banking.iban_ok(bank_account):
+            raise Invalid("Enter a valid IBAN (the check digits do not add up, or the country is not supported).")
+        if not banking.swift_ok(swift_bic) or not banking.swift_matches_iban(swift_bic, bank_account):
+            raise Invalid("Enter the bank's SWIFT/BIC (8 or 11 characters, same country as the IBAN).")
+    else:
+        if not _ACCOUNT.match(bank_account):
+            raise Invalid("Bank account number must be 9 to 18 digits.")
+        if ifsc is None or not _IFSC.match(ifsc):
+            raise Invalid("IFSC must look like HDFC0001234.")
     profile = db.scalar(select(VendorPaymentProfile).where(VendorPaymentProfile.org_id == user.org_id,
                                                            VendorPaymentProfile.vendor_id == vendor_id).with_for_update())
     created = profile is None
     if created:
         profile = VendorPaymentProfile(org_id=user.org_id, vendor_id=vendor_id, account_name=account_name.strip(),
-                                       bank_account=bank_account, ifsc=ifsc)
+                                       bank_account=bank_account, ifsc=ifsc, swift_bic=swift_bic)
         db.add(profile)
-    old_bank = None if created else (profile.bank_account, profile.ifsc, profile.account_name)
-    bank_changed = created or old_bank != (bank_account, ifsc, account_name.strip())
+    old_bank = None if created else (profile.bank_account, profile.ifsc, profile.account_name, profile.swift_bic)
+    bank_changed = created or old_bank != (bank_account, ifsc, account_name.strip(), swift_bic)
     profile.pan, profile.tds_section, profile.payee_type, profile.j_kind = pan, tds_section, payee_type, j_kind
     profile.account_name, profile.bank_account, profile.ifsc = account_name.strip(), bank_account, ifsc
+    profile.swift_bic = swift_bic
     if bank_changed:
         # Maker-checker: new bank details are unusable until someone else verifies them.
         profile.status, profile.changed_by, profile.changed_at = "pending_verification", user.id, datetime.now(UTC)
@@ -271,13 +285,16 @@ def _audit(db: Session, run: PaymentRun, user: User | None, action: str, payload
                  actor_id=user.id if user else None, action=action, payload=payload or {})
 
 
-def create_run(db: Session, user: User) -> PaymentRun:
+def create_run(db: Session, user: User, currency: str = "INR") -> PaymentRun:
+    """One run pays in one currency (v3.0). Invoices are never converted to fit a run."""
     _require_role(user)
+    if currency not in CURRENCIES:
+        raise Invalid(f"A run pays in one of {', '.join(CURRENCIES)}.")
     number = (db.scalar(select(func.max(PaymentRun.number)).where(PaymentRun.org_id == user.org_id)) or 0) + 1
-    run = PaymentRun(id=uuid.uuid4(), org_id=user.org_id, number=number, prepared_by=user.id)
+    run = PaymentRun(id=uuid.uuid4(), org_id=user.org_id, number=number, prepared_by=user.id, currency=currency)
     db.add(run)
     db.flush()
-    _audit(db, run, user, "run_created")
+    _audit(db, run, user, "run_created", {"currency": currency})
     return run
 
 
@@ -293,7 +310,13 @@ def add_invoice(db: Session, user: User, run_id: uuid.UUID, invoice_id: uuid.UUI
     if db.scalar(select(PaymentLine.id).where(PaymentLine.run_id == run.id, PaymentLine.invoice_id == invoice.id,
                                               PaymentLine.status != "removed")):
         raise Conflict("This invoice is already in this run.")
+    if invoice.currency != run.currency:
+        raise Conflict(f"This invoice is in {invoice.currency} and the run pays in {run.currency}. "
+                       "Put it in a run of its own currency.")
     a = assess(db, invoice, run.id)
+    if run.currency != "INR":
+        # Indian TDS is withheld only on rupee payments; a foreign-currency payment is paid gross here.
+        a = {**a, "tds_base": ZERO, "tds_section": None, "tds_rate": ZERO, "tds_amount": ZERO, "net": a["gross"]}
     line = PaymentLine(org_id=run.org_id, run_id=run.id, invoice_id=invoice.id, vendor_id=invoice.vendor_id,
                        gross=a["gross"], tds_base=a["tds_base"], tds_section=a["tds_section"], tds_rate=a["tds_rate"],
                        tds_amount=a["tds_amount"], net=a["net"], risk_results=a["risk_results"],
@@ -399,9 +422,18 @@ def cancel_run(db: Session, user: User, run_id: uuid.UUID) -> PaymentRun:
 # --- Bank file and the mock bank -----------------------------------------------------------------------------
 
 def bank_file(db: Session, run: PaymentRun) -> str:
-    """A generic NEFT/RTGS bulk upload file. Each bank has its own layout; this one is illustrative."""
+    """A generic bulk upload file: NEFT/RTGS for rupees, SWIFT for other currencies. Illustrative layouts."""
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
+    if run.currency != "INR":
+        writer.writerow(["Payment Type", "Beneficiary Name", "IBAN", "SWIFT/BIC", "Currency", "Amount", "Reference"])
+        for line in _lines(db, run):
+            profile = profile_for(db, run.org_id, line.vendor_id) if line.vendor_id else None
+            invoice = db.get(Invoice, line.invoice_id)
+            writer.writerow(["SWIFT", csv_safe(profile.account_name if profile else ""),
+                             profile.bank_account if profile else "", (profile.swift_bic or "") if profile else "",
+                             run.currency, f"{line.net:.2f}", csv_safe(f"{run_label(run)} {invoice.invoice_no}")])
+        return out.getvalue()
     writer.writerow(["Payment Type", "Beneficiary Name", "Beneficiary Account", "IFSC", "Amount",
                      "Debit Narration", "Credit Narration"])
     for line in _lines(db, run):
@@ -457,8 +489,11 @@ def settle(db: Session, job: Job) -> dict[str, Any]:
     for line in _lines(db, run):
         profile = profile_for(db, run.org_id, line.vendor_id) if line.vendor_id else None
         invoice = db.get(Invoice, line.invoice_id)
-        if profile is None or profile.ifsc == MOCK_BANK_INVALID_IFSC:
-            line.status, line.failure_reason = "failed", "Account details invalid (returned by the bank)."
+        wrong_rail = profile is not None and ((run.currency == "INR") != (profile.ifsc is not None))
+        if profile is None or profile.ifsc == MOCK_BANK_INVALID_IFSC or wrong_rail:
+            line.status, line.failure_reason = "failed", (
+                "These bank details do not suit a payment in this currency (returned by the bank)."
+                if wrong_rail else "Account details invalid (returned by the bank).")
             failed += 1
             continue
         line.status, line.utr, line.paid_at = "paid", _utr(run, line), now
@@ -491,7 +526,8 @@ def run_view(db: Session, user: User, run: PaymentRun) -> dict[str, Any]:
                       "tds_rate": ln.tds_rate, "tds_amount": ln.tds_amount, "net": ln.net, "risk": ln.risk_results,
                       "status": ln.status, "utr": ln.utr, "failure_reason": ln.failure_reason})
     refusal = approval_refusal(db, user, run) if run.status == "submitted" else None
-    return {"id": run.id, "label": run_label(run), "status": run.status, "prepared_by": names.get(run.prepared_by),
+    return {"id": run.id, "label": run_label(run), "status": run.status, "currency": run.currency,
+            "prepared_by": names.get(run.prepared_by),
             "approved_by": names.get(run.approved_by), "approved_at": run.approved_at, "hold_reason": run.hold_reason,
             "total_gross": run.total_gross, "total_tds": run.total_tds, "total_net": run.total_net,
             "sent_at": run.sent_at, "settled_at": run.settled_at, "lines": lines,
@@ -536,3 +572,23 @@ def payments_section(db: Session, scope: Any, start: Any) -> dict[str, Any] | No
             by_status["failed"] += line.net
     return {"due": due, "in_runs": by_status["in_runs"], "paid": by_status["paid"], "failed": by_status["failed"],
             "held_by_risk": held, "tds_deducted": tds}
+
+
+def payment_advice(db: Session, user: User, run_id: uuid.UUID) -> tuple[str, bytes]:
+    """A PDF telling each payee what was paid, with the bank reference. Only after the mock bank settled."""
+    from app.modules.documents.pdf import SIMULATED, build
+
+    run = _load_run(db, user, run_id)
+    if run.status not in ("settled", "partly_failed"):
+        raise Conflict("The payment advice exists once the mock bank has settled the run.")
+    rows = []
+    for line in _lines(db, run):
+        invoice = db.get(Invoice, line.invoice_id)
+        rows.append([invoice.vendor_name or "", invoice.invoice_no or "", f"{line.gross:,.2f}", f"{line.tds_amount:,.2f}",
+                     f"{line.net:,.2f}", line.status, line.utr or line.failure_reason or ""])
+    pdf = build(f"Payment advice {run_label(run)}", f"Paid in {run.currency} on {run.settled_at:%d %b %Y}",
+                [("Run", run_label(run)), ("Currency", run.currency), ("Total paid", f"{run.total_net:,.2f}")],
+                ["Payee", "Invoice", "Gross", "TDS", "Net", "Status", "Bank reference"], rows, notice=SIMULATED,
+                source={"run": str(run.id), "lines": rows})
+    _audit(db, run, user, "payment_advice_downloaded", {})
+    return f"{run_label(run)}-payment-advice.pdf", pdf

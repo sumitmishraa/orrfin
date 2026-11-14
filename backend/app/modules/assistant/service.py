@@ -125,7 +125,8 @@ def _page_note(db: Session, user: User, context: dict[str, str] | None) -> str:
 
 
 def ask(db: Session, user: User, question: str, history: list[dict[str, str]] | None,
-        context: dict[str, str] | None, assistant: Any) -> dict[str, Any]:
+        context: dict[str, str] | None, assistant: Any, tools: list | None = None) -> dict[str, Any]:
+    """`tools` (v3.0 superagents) replaces the default read-only set; it is always bound to `user`."""
     question = question.strip()[:MAX_TEXT]
     _check_rate(db, user)
     turns = [Turn(role="assistant" if h.get("role") == "assistant" else "user", text=str(h.get("text", ""))[:MAX_TEXT])
@@ -138,7 +139,7 @@ def ask(db: Session, user: User, question: str, history: list[dict[str, str]] | 
         return {"available": False, "message": UNAVAILABLE}
     full_question = _page_note(db, user, context) + question
     try:
-        reply = assistant.run(ASSISTANT_SYSTEM, turns, full_question, build_tools(db, user))
+        reply = assistant.run(ASSISTANT_SYSTEM, turns, full_question, tools if tools is not None else build_tools(db, user))
     except (AssistantUnavailable, ExtractorUnavailable) as exc:
         log.error = str(exc)[:2000]
         return {"available": False, "message": UNAVAILABLE}
@@ -159,4 +160,6 @@ def ask(db: Session, user: User, question: str, history: list[dict[str, str]] | 
                     if missing else None),
         "tools_used": [c.name for c in reply.tool_calls],
         "model_id": reply.model_id,
+        # v3.0: cards for the person to submit. Taken from what the tools stored, not from the model's text.
+        "proposals": [r["proposal"] for r in results if isinstance(r, dict) and "proposal" in r],
     }

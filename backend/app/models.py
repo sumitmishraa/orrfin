@@ -14,6 +14,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -91,6 +92,14 @@ class User(TimestampMixin, Base):
     approval_limit: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
     manager_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # v3.0 (§9): two-step sign-in. The TOTP secret is a Fernet token; the last step used blocks replays.
+    mfa_secret_encrypted: Mapped[str | None] = mapped_column(Text)
+    mfa_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mfa_last_step: Mapped[int | None] = mapped_column(BigInteger)
+
+    @property
+    def mfa_enabled(self) -> bool:
+        return self.mfa_enabled_at is not None
 
 
 class UserSession(TimestampMixin, Base):
@@ -599,8 +608,9 @@ class VendorPaymentProfile(TimestampMixin, Base):
     payee_type: Mapped[str] = mapped_column(String(12), nullable=False, server_default="company")
     j_kind: Mapped[str] = mapped_column(String(12), nullable=False, server_default="professional")
     account_name: Mapped[str] = mapped_column(String(140), nullable=False)
-    bank_account: Mapped[str] = mapped_column(String(20), nullable=False)
-    ifsc: Mapped[str] = mapped_column(String(11), nullable=False)
+    bank_account: Mapped[str] = mapped_column(String(34), nullable=False)  # Indian account number, or an IBAN
+    ifsc: Mapped[str | None] = mapped_column(String(11))  # Indian payees (NEFT/RTGS)
+    swift_bic: Mapped[str | None] = mapped_column(String(11))  # v3.0: international payees, with an IBAN
     status: Mapped[str] = mapped_column(String(24), nullable=False, server_default="pending_verification")
     changed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -616,6 +626,7 @@ class PaymentRun(TimestampMixin, Base):
     org_id: Mapped[uuid.UUID] = _org_fk()
     number: Mapped[int] = mapped_column(Integer, nullable=False)  # shown as PAY-0001
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="draft")
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default="INR")  # v3.0: one currency per run
     prepared_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -1026,6 +1037,107 @@ class ContractObligation(TimestampMixin, Base):
     owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(5), nullable=False, server_default="open")
     kind: Mapped[str] = mapped_column(String(20), nullable=False, server_default="manual")  # manual | renewal_notice
+
+
+# --- App Studio (BUILD_PLAN v3.0 change 49) -------------------------------------------------------
+
+class AppObject(TimestampMixin, Base):
+    """An admin-built record type: questions, who approves, which columns the list shows. Data, never code."""
+    __tablename__ = "app_objects"
+    __table_args__ = (UniqueConstraint("org_id", "key"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    key: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    fields: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    approver_role: Mapped[str] = mapped_column(String(10), nullable=False)
+    list_columns: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+
+
+class AppRecord(TimestampMixin, Base):
+    """One record of an App Studio object, decided by its approver role (never by its creator)."""
+    __tablename__ = "app_records"
+    __table_args__ = (CheckConstraint(_in("status", ("submitted", "approved", "rejected")), name="status"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    object_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("app_objects.id"), nullable=False, index=True)
+    values: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str | None] = mapped_column(Text)
+
+
+# --- AI layer (BUILD_PLAN v3.0 change 47, ADR 0007) -----------------------------------------------
+
+class ActionProposal(TimestampMixin, Base):
+    """Something an AI suggested. Only its own person can submit it, once, before it expires."""
+    __tablename__ = "action_proposals"
+    __table_args__ = (CheckConstraint(_in("kind", ("request", "supplier_invite", "workflow_draft", "rfq")), name="kind"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    agent: Mapped[str] = mapped_column(String(20), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    result_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+
+class AgentRun(TimestampMixin, Base):
+    """One superagent run, in the app or over MCP: which tools it used and which proposals it made."""
+    __tablename__ = "agent_runs"
+    __table_args__ = (CheckConstraint(_in("channel", ("chat", "mcp")), name="channel"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    agent: Mapped[str] = mapped_column(String(20), nullable=False)
+    channel: Mapped[str] = mapped_column(String(5), nullable=False)
+    tools_used: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    proposal_ids: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+# --- Vendor cards, simulated (BUILD_PLAN v3.0 change 46, ADR 0008) --------------------------------
+
+class VendorCard(TimestampMixin, Base):
+    """A simulated virtual card for one approved request. Only the issuer's reference and last four are kept."""
+    __tablename__ = "vendor_cards"
+    __table_args__ = (CheckConstraint(_in("status", ("active", "frozen", "closed")), name="status"),
+                      CheckConstraint("spent <= limit_amount", name="within_limit"))
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("purchase_requests.id"), nullable=False)
+    holder_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    issued_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    issuer_ref: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    last4: Mapped[str] = mapped_column(String(4), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    limit_amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    spent: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    merchant_lock: Mapped[str | None] = mapped_column(String(120))
+    expires_on: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(8), nullable=False, server_default="active")
+
+
+class CardTransaction(TimestampMixin, Base):
+    """Every charge attempt on a card, approved or declined, with the reason."""
+    __tablename__ = "card_transactions"
+    __table_args__ = (CheckConstraint(_in("status", ("approved", "declined")), name="status"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    card_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("vendor_cards.id"), nullable=False, index=True)
+    merchant: Mapped[str] = mapped_column(String(120), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    status: Mapped[str] = mapped_column(String(9), nullable=False)
+    decline_reason: Mapped[str | None] = mapped_column(String(200))
+    auth_code: Mapped[str | None] = mapped_column(String(12))
+    invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id"))
 
 
 # --- Notifications, API keys, webhooks (BUILD_PLAN v3.0 §5) --------------------------------------

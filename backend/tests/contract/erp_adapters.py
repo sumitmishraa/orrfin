@@ -220,3 +220,21 @@ class FlakyTransport(httpx.BaseTransport):
             self.failures += 1
             raise httpx.ReadTimeout("simulated: the ERP saved the document but the reply was lost", request=request)
         return response
+
+
+
+def _dialect(system: str) -> Callable[[], ErpAdapter]:
+    def build() -> ErpAdapter:
+        from app.adapters.dialect_rest import DialectAdapter
+        from app.adapters.dialect_rest_sim import FakeDialectServer
+        from app.adapters.dialects import BY_SYSTEM
+
+        d = BY_SYSTEM[system]
+        return DialectAdapter(ErpHttp(base_url=d.base_url, transport=httpx.MockTransport(FakeDialectServer(d, SimStore(None))),
+                                      erp_name=d.name), d)
+    return build
+
+
+# Step 36: the eight dialect-based connectors join the same contract suite.
+for _system in ("quickbooks_online", "xero", "sage_intacct", "sage_50", "acumatica", "focus_x", "marg", "tally_uae"):
+    ADAPTERS[f"{_system}-simulated"] = _dialect(_system)

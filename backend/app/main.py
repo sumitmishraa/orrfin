@@ -31,6 +31,15 @@ from app.modules.entities.router import router as entities_router
 from app.modules.intake_forms.router import router as intake_forms_router
 from app.modules.integrations.router import router as integrations_router
 from app.modules.notifications.router import router as notifications_router
+from app.mcp_server import router as mcp_router
+from app.modules.agents.router import router as agents_router
+from app.modules.app_studio.router import router as app_studio_router
+from app.modules.documents.router import router as documents_router
+from app.modules.spend.router import router as spend_router
+from app.modules.cards.router import router as cards_router
+from app.modules.contracts.router import router as contracts_router
+from app.modules.sourcing.router import portal_router as sourcing_portal_router
+from app.modules.sourcing.router import router as sourcing_router
 from app.modules.suppliers.router import portal_router as supplier_portal_router
 from app.modules.suppliers.router import router as suppliers_router
 from app.modules.workflow_engine.router import router as workflow_engine_router
@@ -91,6 +100,15 @@ def create_app() -> FastAPI:
     app.include_router(integrations_router)
     app.include_router(suppliers_router)
     app.include_router(supplier_portal_router)
+    app.include_router(sourcing_router)
+    app.include_router(sourcing_portal_router)
+    app.include_router(contracts_router)
+    app.include_router(cards_router)
+    app.include_router(agents_router)
+    app.include_router(mcp_router)
+    app.include_router(spend_router)
+    app.include_router(documents_router)
+    app.include_router(app_studio_router)
     return app
 
 

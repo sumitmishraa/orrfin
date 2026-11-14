@@ -1,21 +1,40 @@
 # Orrfin architecture (one page)
 
 The full design is in [BUILD_PLAN.md](BUILD_PLAN.md) §4. This page says what exists **now** and where it lives.
-Status: Steps 1–27 built (the P2P Control Gate: every row in "Folders" below exists). Platform v3.0 (BUILD_PLAN changes 36–50, [ADR 0009](adr/0009-platform-expansion.md)) is being added in Steps 30–40; this page is rewritten in Steps 39–40. The "Components" table below still describes Step 1 and is out of date until then.
+Status (15 Nov 2026): Steps 1–27 (the P2P Control Gate) and the v3.0 platform Steps 30–38 are built ([ADR 0009](adr/0009-platform-expansion.md)); Steps 39–40 tidied this page. Deploy (Step 28) and final review (Step 29) come next.
 
 ## Components
 
 ```
-Browser ──► web (Next.js, :3000) ──► api (FastAPI, :8000) ──► Postgres 16 (Docker locally, RDS on AWS)
+Browser ──► web (Next.js 16, :3000) ──► api (FastAPI, :8000) ──► Postgres 16 (Docker locally, RDS on AWS)
+Supplier ─► web /portal (own cookie) ─┘        │
+MCP client ─────────── POST /mcp (API key) ────┘     worker (same code, `python -m app.worker`) ──► jobs table
 ```
 
-| Component | Folder | What it does today | Comes later |
-|---|---|---|---|
-| Web app | `frontend/` | One placeholder page that checks the API is up | Login, intake requests and approvals, invoices, POs, audit (Steps 3–10) |
-| API | `backend/app/` | `GET /health`; settings from env; DB engine | Business modules and routes |
-| Worker | `backend/app/worker.py` | Not built yet | Jobs table loop: extract, erp_pull, erp_push for bills and POs (Steps 4, 7, 14, 15) |
-| Database | `infra/docker-compose.yml` | Postgres 16, empty; Alembic ready | Schema from §5 (Step 3) |
-| CI | `.github/workflows/ci.yml` | Migrations + pytest against Postgres | Same, with more tests |
+| Component | Folder | What it does |
+|---|---|---|
+| Web app | `frontend/` | Employee app in the shell (`components/shell/`), supplier portal under `/portal`; calls the API through `/api/*` |
+| API | `backend/app/` | One FastAPI app; each product is a module under `app/modules/` with its own router |
+| Worker | `backend/app/worker.py` | Runs jobs from the `jobs` table: extract, match, ERP pull/push, mock bank, webhook delivery |
+| Database | `infra/docker-compose.yml` | Postgres 16; the app runs as the restricted `orrfin_app` role with row-level security per org |
+| CI | `.github/workflows/ci.yml` | Migrations + pytest against Postgres |
+
+## v3.0 platform modules (Steps 30–38)
+
+| Module | Product | Notes |
+|---|---|---|
+| `modules/entities/` | Legal entities, currencies, FX table | Entity carries the tax regime (in_gst / ae_vat) used by matching |
+| `modules/workflow_engine/` | Workflow engine | Versioned definitions, validator, simulator; second admin for lowering approvals (ADR 0010) |
+| `modules/intake_forms/` | Intake management | Request types and extra questions; answers feed workflow rules as `custom.<key>` |
+| `modules/notifications/`, `modules/integrations/` | Notifications, API keys, signed webhooks | Keys hashed; webhooks HMAC-signed with an SSRF allow-list |
+| `modules/suppliers/`, `modules/supplier_risk/` | Supplier onboarding, portal, risk | Separate login realm; pure `rules.py` (§6e); critical risk holds POs and payments |
+| `modules/sourcing/` | Sourcing | Sealed quotes, pure `compare.py` (§6f), human award → normal draft request |
+| `modules/contracts/` | Contracts | AI/pattern proposals must quote the PDF; a person confirms every term |
+| `modules/payments/` (+ `banking.py`), `modules/cards/` | Global payments, vendor cards | Simulated only: one currency per run, IBAN/SWIFT checks, mock card issuer |
+| `modules/agents/`, `app/mcp_server.py` | AI concierge, superagents, workflow-builder agent, MCP | Read + propose only; proposals are single-use and submitted by their person |
+| `modules/spend/`, `modules/documents/`, `modules/app_studio/` | Spend insights, PDFs, App Studio | Deterministic cube per currency; PDFs from records; App Studio objects are data, not code |
+| `adapters/dialects.py`, `dialect_rest.py`, `dialect_rest_sim.py` | 8 more ERPs (all simulated) | One shared adapter, one field map per ERP; same contract and lost-reply suites |
+| `auth/totp.py`, `security/http.py`, `db.py` | Security | Two-step sign-in, CSRF guard and headers, row-level security per org ([SECURITY_REVIEW.md](SECURITY_REVIEW.md)) |
 
 ## Folders
 

@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { PortalAuthError, portalApi, portalUpload } from "@/lib/portal-api";
 
+import { PortalRfqs } from "./rfqs";
+
 interface PortalView {
   contact_name: string; legal_name: string; country: "IN" | "AE"; status: string; tax_id: string | null; pan: string | null;
   answers: Record<string, string>; questions: Record<string, string>; bank_last4: string | null;
@@ -225,6 +227,8 @@ export default function SupplierPortalPage() {
               <Button variant="outline" onClick={addDocument} disabled={busy || !upload.file}>Upload document</Button>
             </div>
           </Panel>
+
+          {["approved", "handed_over", "active"].includes(view.status) ? <PortalRfqs /> : null}
 
           {view.editable ? (
             <div className="flex items-center gap-3">

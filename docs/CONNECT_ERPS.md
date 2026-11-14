@@ -211,3 +211,15 @@ Nothing to sign up for.
 
 **Where drafts appear:** Odoo (http://localhost:8069, login admin / admin) → **Accounting → Vendors → Bills** (Draft)
 and **Purchase → Requests for Quotation**. Confirm an RFQ, then Sync: the request becomes "PO open".
+
+## Step 36: eight more ERPs (simulated only)
+
+QuickBooks Online, Xero, Sage Intacct, Sage 50/200, Acumatica, Focus X, Marg ERP and TallyPrime (UAE VAT)
+appear on the Connectors page with the label **Simulated**. There are no keys to paste yet: each runs
+against an in-process fake that uses the ERP's own resource and field names (`backend/app/adapters/dialects.py`).
+Those names come from the vendors' public documentation and **have not been checked against a live tenant**.
+
+To move one to a real account later: create the vendor's free developer/sandbox account, add a live mode
+for that ERP (credentials fields, allowed host, OAuth where needed), and run the contract and failure suites
+against it. Known gaps: QuickBooks Online and Xero have no goods-receipt document, so three-way matching
+needs receipts recorded elsewhere; TallyPrime UAE uses 5% VAT, which the Indian demo data does not match.

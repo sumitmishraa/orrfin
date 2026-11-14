@@ -76,11 +76,14 @@ def test_only_admins_manage_connectors(client, admin):
     assert client.get("/connectors/active").status_code == 200  # everyone may see which ERP is active
 
 
-def test_catalogue_lists_all_eleven_erps_with_honest_labels(client, admin):
+def test_catalogue_lists_all_nineteen_erps_with_honest_labels(client, admin):
     user, _, _ = admin
     login(client, user)
     cards = client.get("/connectors").json()
-    assert len(cards) == 11
+    assert len(cards) == 19  # 11 from Steps 12-20, 8 from Step 36 (all simulated)
+    step_36 = [c for c in cards if c["system"] in ("quickbooks_online", "xero", "sage_intacct", "sage_50", "acumatica",
+                                                     "focus_x", "marg", "tally_uae")]
+    assert len(step_36) == 8 and all(c["live_label"] == "simulated" for c in step_36)
     erpnext = next(c for c in cards if c["system"] == "erpnext")
     assert erpnext["built"] and erpnext["simulated"]["is_active"] and erpnext["simulated"]["label"] == "simulated"
     assert {c["live_label"] for c in cards} == {"live", "sandbox", "simulated"}

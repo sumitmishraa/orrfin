@@ -45,6 +45,7 @@ export const NAV_AREAS: NavArea[] = [
       { href: "/tasks", label: "My tasks", icon: Bell, showsTaskCount: true },
       { href: "/inbox", label: "Inbox", icon: Inbox },
       { href: "/notifications", label: "Notifications", icon: Bell },
+      { href: "/ask", label: "Ask Orrfin (agents)", icon: Inbox },
     ],
   },
   {
@@ -61,6 +62,7 @@ export const NAV_AREAS: NavArea[] = [
     items: [
       { href: "/invoices", label: "Invoices", icon: FileText },
       { href: "/payments", label: "Payments", icon: Landmark, roles: FINANCE },
+      { href: "/cards", label: "Vendor cards", icon: Wallet },
       { href: "/bank", label: "Bank reconciliation", icon: ArrowLeftRight, roles: FINANCE },
       { href: "/close", label: "Month-end close", icon: CalendarCheck, roles: FINANCE },
       { href: "/gst", label: "GSTR-2B", icon: Receipt, roles: FINANCE },
@@ -81,9 +83,18 @@ export const NAV_AREAS: NavArea[] = [
     ],
   },
   {
+    key: "source", label: "Source", summary: "Quotes, awards and contracts", icon: ScrollText,
+    items: [
+      { href: "/sourcing", label: "Sourcing (RFQs)", icon: ListChecks, roles: ["buyer", "approver", "finance", "admin"] },
+      { href: "/contracts", label: "Contracts", icon: ScrollText, roles: ["buyer", "approver", "finance", "admin"] },
+    ],
+  },
+  {
     key: "automation", label: "Automate", summary: "Who must approve what, and when", icon: Workflow,
     items: [
       { href: "/automation/workflows", label: "Approval workflow", icon: Workflow, roles: ADMIN },
+      { href: "/app-studio", label: "App Studio", icon: SlidersHorizontal },
+      { href: "/spend", label: "Spend insights", icon: Gauge, roles: ["buyer", "approver", "finance", "admin"] },
     ],
   },
   {

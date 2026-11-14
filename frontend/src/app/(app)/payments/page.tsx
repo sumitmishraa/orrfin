@@ -35,7 +35,9 @@ export default function PaymentsPage() {
 
   async function newRun() {
     try {
-      const run = await post<{ id: string }>("/payment-runs");
+      const currency = window.prompt("Currency for this run (INR, AED, USD or EUR). Invoices are never converted.", "INR");
+      if (!currency) return;
+      const run = await post<{ id: string }>("/payment-runs", { currency: currency.trim().toUpperCase() });
       router.push(`/payments/${run.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create a run.");

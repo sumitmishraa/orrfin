@@ -30,7 +30,12 @@ class ProfileIn(BaseModel):
     j_kind: Literal["professional", "technical"] = "professional"
     account_name: str = Field(min_length=1, max_length=140)
     bank_account: str = Field(min_length=9, max_length=24)
-    ifsc: str = Field(min_length=11, max_length=11)
+    ifsc: str | None = Field(default=None, min_length=11, max_length=11)
+    swift_bic: str | None = Field(default=None, min_length=8, max_length=11)  # v3.0: with an IBAN in bank_account
+
+
+class NewRunIn(BaseModel):
+    currency: str = Field(default="INR", min_length=3, max_length=3)
 
 
 class AddInvoiceIn(BaseModel):
@@ -71,8 +76,8 @@ def runs(user: CurrentUser, db: DbSession) -> JSONResponse:
 
 
 @router.post("/payment-runs", status_code=201)
-def create_run(user: CurrentUser, db: DbSession) -> JSONResponse:
-    run = service.create_run(db, user)
+def create_run(user: CurrentUser, db: DbSession, body: NewRunIn | None = None) -> JSONResponse:
+    run = service.create_run(db, user, (body or NewRunIn()).currency)
     db.commit()
     return JSONResponse(to_jsonable(service.run_view(db, user, run)), status_code=201)
 
@@ -131,3 +136,10 @@ def bank_statement(run_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Respo
 
 
 SECTION_PROVIDERS["payments"] = service.payments_section
+
+
+@router.get("/payment-runs/{run_id}/advice")
+def payment_advice(run_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Response:
+    name, pdf = service.payment_advice(db, user, run_id)
+    db.commit()
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.service import user_for_token
 from app.config import get_settings
-from app.db import get_session
+from app.db import get_session, scope_to_org
 from app.models import User
 
 DbSession = Annotated[Session, Depends(get_session)]
@@ -23,6 +23,8 @@ def current_user(request: Request, db: DbSession) -> User:
     user = user_for_token(db, token) if token else None
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Please log in.")
+    # v3.0 (§9): from here on the database itself only shows this org's rows (row-level security).
+    scope_to_org(db, user.org_id)
     return user
 
 

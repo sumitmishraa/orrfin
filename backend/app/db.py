@@ -7,7 +7,7 @@ migrations can refer to constraints without guessing auto-generated names.
 
 from collections.abc import Iterator
 
-from sqlalchemy import MetaData, create_engine, event
+from sqlalchemy import MetaData, create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
@@ -46,6 +46,24 @@ def _use_app_role(dbapi_connection, _record) -> None:
     cursor.close()
     dbapi_connection.commit()
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+@event.listens_for(SessionLocal, "after_begin")
+def _scope_transaction_to_org(session: Session, _transaction, connection) -> None:
+    """Row-level security (v3.0, §9): every transaction of a signed-in request says which org it serves.
+
+    Set per transaction (`is_local = true`), so it ends with the transaction and can never leak to the
+    next request that borrows this pooled connection. Postgres then hides other orgs' rows by itself.
+    """
+    org_id = session.info.get("org_id")
+    if org_id is not None:
+        connection.execute(text("SELECT set_config('app.org_id', :org, true)"), {"org": str(org_id)})
+
+
+def scope_to_org(session: Session, org_id) -> None:
+    """Pin this session to one org for the rest of the request (also for the transaction already open)."""
+    session.info["org_id"] = org_id
+    session.execute(text("SELECT set_config('app.org_id', :org, true)"), {"org": str(org_id)})
 
 
 def get_session() -> Iterator[Session]:

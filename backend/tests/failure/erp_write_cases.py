@@ -387,3 +387,36 @@ def drain_with_retries(db, rounds: int = 6) -> None:
         db.commit()
         if not moved:
             return
+
+
+
+def _dialect_case(system: str) -> WriteCase:
+    from app.adapters.dialect_rest import DialectAdapter, dig
+    from app.adapters.dialect_rest_sim import FakeDialectServer
+    from app.adapters.dialects import BY_SYSTEM
+
+    d = BY_SYSTEM[system]
+
+    def build(wrap: Wrap) -> ErpAdapter:
+        server = FakeDialectServer(d, SimStore(None))
+        adapter = DialectAdapter(ErpHttp(base_url=d.base_url, transport=wrap(httpx.MockTransport(server)),
+                                         erp_name=f"{d.name} (simulated)"), d)
+        adapter.server = server
+        return adapter
+
+    def count(adapter) -> dict[str, int]:
+        drafts = [p for p in adapter.server.data.all("pos") if dig(p, d.f["po_status"]) == d.draft_value]
+        return {"bills": len(adapter.server.data.all("bills")), "pos": len(drafts)}
+
+    def posts_to(logical: str) -> Callable[[httpx.Request], bool]:
+        return lambda r: r.method == "POST" and r.url.path.endswith("/" + d.collections[logical])
+
+    return WriteCase(system, build, count, posts_to("bills"), posts_to("po_drafts"))
+
+
+# Step 36: the dialect-based connectors run the same lost-reply and validation tests. QuickBooks Online, Xero
+# and TallyPrime UAE are left out here on purpose: these tests need an invoice that passes three-way matching
+# against the canonical (Indian GST) data, and those three cannot give one (no goods receipts in QuickBooks
+# and Xero; VAT instead of GST in Tally UAE). Their draft writes and lookups are covered by the contract suite.
+for _system in ("sage_intacct", "sage_50", "acumatica", "focus_x", "marg"):
+    CASES[_system] = _dialect_case(_system)

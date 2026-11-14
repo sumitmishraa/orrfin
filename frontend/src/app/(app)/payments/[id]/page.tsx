@@ -46,13 +46,13 @@ export default function PaymentRunPage() {
     }
   }
 
-  async function download(kind: "bank-file" | "bank-statement") {
+  async function download(kind: "bank-file" | "bank-statement" | "advice") {
     const response = await fetch(`/api/payment-runs/${id}/${kind}`, { credentials: "same-origin" });
     if (!response.ok) { setActionError((await response.json().catch(() => ({}))).detail ?? "Download failed."); return; }
     const url = URL.createObjectURL(await response.blob());
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${run!.label}-${kind}.csv`;
+    a.download = `${run!.label}-${kind}.${kind === "advice" ? "pdf" : "csv"}`;
     a.click();
     URL.revokeObjectURL(url);
     void reload();
@@ -115,6 +115,8 @@ export default function PaymentRunPage() {
           {run.allowed.send ? <Button onClick={() => void act(() => post<Run>(`/payment-runs/${id}/send`)).then(() => setTimeout(() => void reload(), 2500))}><Send aria-hidden /> Send to bank (simulated)</Button> : null}
           {["settled", "partly_failed"].includes(run.status) ? (
             <Button variant="outline" onClick={() => void download("bank-statement")}><Landmark aria-hidden /> Bank statement (CSV)</Button>) : null}
+            {run.status === "settled" || run.status === "partly_failed" ? (
+              <Button variant="outline" onClick={() => void download("advice")}>Payment advice (PDF)</Button>) : null}
           {run.status === "sent" ? <Button variant="outline" onClick={() => void reload()}>Refresh</Button> : null}
           {run.allowed.cancel ? <Button variant="ghost" onClick={() => void act(() => post<Run>(`/payment-runs/${id}/cancel`))}>Cancel run</Button> : null}
         </div>

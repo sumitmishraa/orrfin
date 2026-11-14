@@ -463,3 +463,34 @@ def get_adapter(connection: "ErpConnection") -> ErpAdapter:
     if spec.simulated is None:
         raise LookupError(f"{spec.name} has no simulated mode.")
     return spec.simulated(connection, sim_state_path(connection))
+
+
+# --- Eight more ERPs (Step 36), all simulated: one shared adapter, one field map each (adapters/dialects.py) ---
+
+def _dialect_simulated(system: str) -> Callable[["ErpConnection", Path], ErpAdapter]:
+    def build(connection: "ErpConnection", state: Path) -> ErpAdapter:
+        import httpx
+
+        from app.adapters.dialect_rest import DialectAdapter
+        from app.adapters.dialect_rest_sim import FakeDialectServer
+        from app.adapters.dialects import BY_SYSTEM
+        from app.adapters.sim_store import SimStore
+
+        dialect = BY_SYSTEM[system]
+        http = ErpHttp(base_url=dialect.base_url, transport=httpx.MockTransport(FakeDialectServer(dialect, SimStore(state))),
+                       erp_name=f"{dialect.name} (simulated)")
+        return DialectAdapter(http, dialect)
+    return build
+
+
+def _add_dialects() -> None:
+    from app.adapters.dialects import DIALECTS
+
+    for d in DIALECTS:
+        CATALOGUE[d.system] = ConnectorSpec(
+            system=d.system, name=d.name, segment=d.segment, live_label="simulated", step=36, built=True,
+            signup=d.docs, simulated=_dialect_simulated(d.system),
+            note=f"Simulated. Field names from the vendor's public API docs, {d.verified}. {d.note}")
+
+
+_add_dialects()
