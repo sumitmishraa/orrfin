@@ -58,6 +58,11 @@ def pull_from_erp(db: Session, org_id: uuid.UUID, adapter: ErpAdapter,
             _apply(row, values)
             counts["vendors"]["updated"] += 1
     db.flush()
+    # v3.0: a supplier handed over to the ERP becomes active once its vendor shows up here. The ERP
+    # owns the vendor master; Orrfin only notices that a person created it.
+    from app.modules.suppliers.service import link_synced_vendors  # local import: keeps sync free of UI modules
+
+    link_synced_vendors(db, org_id)
 
     pos = _by_ref(db, PurchaseOrder, org_id, connection_id)
     po_lines = _by_ref(db, PoLine, org_id, connection_id)

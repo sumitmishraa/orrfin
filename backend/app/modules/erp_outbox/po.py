@@ -36,6 +36,11 @@ def po_unavailable_reason(db: Session, request: PurchaseRequest) -> str | None:
     vendor = db.get(Vendor, request.vendor_id) if request.vendor_id else None
     if vendor is None:
         return "No ERP vendor was chosen for this request, so there is nobody to order from."
+    from app.modules.suppliers.service import hold_reason_for_vendor  # local import: suppliers imports notifications
+
+    hold = hold_reason_for_vendor(db, request.org_id, vendor.id)
+    if hold:
+        return hold  # §6e: a critical-risk supplier gets no new PO until a reviewer clears the hold
     connection = db.get(ErpConnection, vendor.erp_connection_id)
     name = spec_for(connection.system).name
     if not connection.is_active:

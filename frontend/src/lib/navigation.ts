@@ -44,6 +44,7 @@ export const NAV_AREAS: NavArea[] = [
       { href: "/home", label: "Dashboard", icon: Gauge },
       { href: "/tasks", label: "My tasks", icon: Bell, showsTaskCount: true },
       { href: "/inbox", label: "Inbox", icon: Inbox },
+      { href: "/notifications", label: "Notifications", icon: Bell },
     ],
   },
   {
@@ -74,6 +75,12 @@ export const NAV_AREAS: NavArea[] = [
     ],
   },
   {
+    key: "suppliers", label: "Suppliers", summary: "Onboard and check who you buy from", icon: Building2,
+    items: [
+      { href: "/suppliers", label: "Onboarding", icon: Building2, roles: ["buyer", "approver", "finance", "admin"] },
+    ],
+  },
+  {
     key: "automation", label: "Automate", summary: "Who must approve what, and when", icon: Workflow,
     items: [
       { href: "/automation/workflows", label: "Approval workflow", icon: Workflow, roles: ADMIN },
@@ -85,6 +92,7 @@ export const NAV_AREAS: NavArea[] = [
       { href: "/connectors", label: "Connectors", icon: Cable, roles: ADMIN },
       { href: "/settings/entities", label: "Legal entities", icon: Building2, roles: FINANCE },
       { href: "/settings/forms", label: "Request forms", icon: ListChecks, roles: ADMIN },
+      { href: "/settings/integrations", label: "API & webhooks", icon: Cable },
     ],
   },
 ];

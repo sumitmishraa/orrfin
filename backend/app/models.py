@@ -771,6 +771,325 @@ class WorkflowVersion(TimestampMixin, Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+# --- Supplier onboarding, portal realm and risk (BUILD_PLAN v3.0 changes 41-42, §5, §6e) ---------
+
+SUPPLIER_STATUSES = ("invited", "submitted", "in_review", "approved", "rejected", "handed_over", "active")
+SUPPLIER_DOCUMENT_KINDS = ("tax_certificate", "pan", "bank_proof", "other")
+RISK_LEVELS = ("low", "medium", "high", "critical")
+
+
+def _supplier_fk() -> Mapped[uuid.UUID]:
+    return mapped_column(UUID(as_uuid=True), ForeignKey("suppliers.id"), nullable=False, index=True)
+
+
+class Supplier(TimestampMixin, Base):
+    """An onboarding record Orrfin owns until handover. The vendor itself lives in the ERP (`vendor_id`)."""
+    __tablename__ = "suppliers"
+    __table_args__ = (
+        CheckConstraint(_in("status", SUPPLIER_STATUSES), name="status"),
+        CheckConstraint(_in("country", ("IN", "AE")), name="country"),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    legal_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    country: Mapped[str] = mapped_column(String(2), nullable=False)
+    category: Mapped[str] = mapped_column(String(10), nullable=False)  # goods, services or software
+    tax_id: Mapped[str | None] = mapped_column(String(15))  # GSTIN or TRN
+    pan: Mapped[str | None] = mapped_column(String(10))
+    contact_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    contact_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    status: Mapped[str] = mapped_column(String(12), nullable=False, server_default="invited")
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id"))
+    # Segregation of duties (§9): the inviter may not review this supplier.
+    invited_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_reason: Mapped[str | None] = mapped_column(Text)
+    answers: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    # Bank details: one Fernet token; the page shows the last four characters only.
+    bank_details_encrypted: Mapped[str | None] = mapped_column(Text)
+    bank_last4: Mapped[str | None] = mapped_column(String(4))
+    bank_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    bank_changed_on: Mapped[date | None] = mapped_column(Date)
+    # §6e: a critical risk level holds new POs and payments until a named reviewer clears it.
+    on_hold: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+
+
+class SupplierUser(TimestampMixin, Base):
+    """A supplier's contact who signs in to the portal. A separate login realm from `users` (§9)."""
+    __tablename__ = "supplier_users"
+    __table_args__ = (Index("uq_supplier_users_email_lower", text("lower(email)"), unique=True),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    supplier_id: Mapped[uuid.UUID] = _supplier_fk()
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255))  # NULL until the invitation is accepted
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+
+class SupplierInvite(TimestampMixin, Base):
+    """A single-use invitation link. Only a SHA-256 of the token is stored; it expires in 7 days."""
+    __tablename__ = "supplier_invites"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    supplier_id: Mapped[uuid.UUID] = _supplier_fk()
+    supplier_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("supplier_users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SupplierSession(TimestampMixin, Base):
+    """A portal login session. Its own table and cookie, so it can never pass as an employee session."""
+    __tablename__ = "supplier_sessions"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    supplier_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("supplier_users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SupplierDocument(TimestampMixin, Base):
+    """A file a supplier uploaded. It keeps its own file fields: `documents.uploaded_by` must be an employee."""
+    __tablename__ = "supplier_documents"
+    __table_args__ = (CheckConstraint(_in("kind", SUPPLIER_DOCUMENT_KINDS), name="kind"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    supplier_id: Mapped[uuid.UUID] = _supplier_fk()
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    s3_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_on: Mapped[date | None] = mapped_column(Date)
+
+
+class RiskAssessment(TimestampMixin, Base):
+    """One run of the §6e rules, kept with its rule-set version so the result can be re-explained."""
+    __tablename__ = "risk_assessments"
+    __table_args__ = (CheckConstraint(_in("level", RISK_LEVELS), name="level"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    supplier_id: Mapped[uuid.UUID] = _supplier_fk()
+    rule_set_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    level: Mapped[str] = mapped_column(String(10), nullable=False)
+    results: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    answers: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    next_review_on: Mapped[date | None] = mapped_column(Date)
+
+
+class SanctionsEntry(TimestampMixin, Base):
+    """A name on the synthetic sanctions list. Reference data shared by all orgs, so no org_id."""
+    __tablename__ = "sanctions_entries"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    country: Mapped[str | None] = mapped_column(String(2))
+    list_name: Mapped[str] = mapped_column(String(80), nullable=False)
+
+
+# --- Sourcing (BUILD_PLAN v3.0 change 43, §5, §6f) ------------------------------------------------
+
+RFQ_STATUSES = ("draft", "open", "closed", "awarded", "cancelled")
+
+
+def _rfq_fk() -> Mapped[uuid.UUID]:
+    return mapped_column(UUID(as_uuid=True), ForeignKey("rfq_events.id"), nullable=False, index=True)
+
+
+class RfqEvent(TimestampMixin, Base):
+    """A request for quotation. Its scoring weights are fixed when it opens and shown to everyone."""
+    __tablename__ = "rfq_events"
+    __table_args__ = (UniqueConstraint("org_id", "number"), CheckConstraint(_in("status", RFQ_STATUSES), name="status"))
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    number: Mapped[int] = mapped_column(Integer, nullable=False)  # shown as RFQ-0001
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    category_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("categories.id"), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    closes_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="draft")
+    scoring: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    request_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("purchase_requests.id"))
+
+
+class RfqLine(TimestampMixin, Base):
+    __tablename__ = "rfq_lines"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    rfq_id: Mapped[uuid.UUID] = _rfq_fk()
+    line_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    uom: Mapped[str] = mapped_column(String(40), nullable=False, server_default="Nos")
+
+
+class RfqInvite(TimestampMixin, Base):
+    __tablename__ = "rfq_invites"
+    __table_args__ = (UniqueConstraint("rfq_id", "supplier_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    rfq_id: Mapped[uuid.UUID] = _rfq_fk()
+    supplier_id: Mapped[uuid.UUID] = _supplier_fk()
+
+
+class Quote(TimestampMixin, Base):
+    """One supplier's sealed answer to an RFQ: nobody at the buyer sees it until the RFQ closes."""
+    __tablename__ = "quotes"
+    __table_args__ = (UniqueConstraint("rfq_id", "supplier_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    rfq_id: Mapped[uuid.UUID] = _rfq_fk()
+    supplier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("suppliers.id"), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    freight: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    payment_terms_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    delivery_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    valid_until: Mapped[date] = mapped_column(Date, nullable=False)
+    submitted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("supplier_users.id"), nullable=False)
+
+
+class QuoteLine(TimestampMixin, Base):
+    __tablename__ = "quote_lines"
+    __table_args__ = (UniqueConstraint("quote_id", "rfq_line_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    quote_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("quotes.id"), nullable=False, index=True)
+    rfq_line_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("rfq_lines.id"), nullable=False)
+    rate: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    tax_rate: Mapped[Decimal] = mapped_column(TAX_RATE, nullable=False)
+
+
+class RfqAward(TimestampMixin, Base):
+    """Who awarded which quote, why, and the exact comparison they saw."""
+    __tablename__ = "rfq_awards"
+    __table_args__ = (UniqueConstraint("rfq_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    rfq_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("rfq_events.id"), nullable=False)
+    quote_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("quotes.id"), nullable=False)
+    awarded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    comparison_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+
+# --- Contracts (BUILD_PLAN v3.0 change 44, §5) ----------------------------------------------------
+
+CONTRACT_STATUSES = ("draft", "active", "expired", "terminated")
+TERM_FIELDS = ("party", "value", "currency", "start_date", "end_date", "renewal", "notice_days", "payment_terms",
+               "liability_cap", "governing_law")
+
+
+class Contract(TimestampMixin, Base):
+    __tablename__ = "contracts"
+    __table_args__ = (CheckConstraint(_in("status", CONTRACT_STATUSES), name="status"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("suppliers.id"))
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id"))
+    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(12), nullable=False, server_default="draft")
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id"))
+    activated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class ContractTerm(TimestampMixin, Base):
+    """One key term. AI may propose it with a quote from the document; only a person confirms it."""
+    __tablename__ = "contract_terms"
+    __table_args__ = (UniqueConstraint("contract_id", "field"), CheckConstraint(_in("source", ("ai", "human")), name="source"))
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    contract_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("contracts.id"), nullable=False, index=True)
+    field: Mapped[str] = mapped_column(String(30), nullable=False)
+    value: Mapped[str] = mapped_column(String(500), nullable=False)
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # {"quote": "...", "page": 2}
+    source: Mapped[str] = mapped_column(String(5), nullable=False)
+    confirmed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class ContractObligation(TimestampMixin, Base):
+    __tablename__ = "contract_obligations"
+    __table_args__ = (CheckConstraint(_in("status", ("open", "done")), name="status"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    contract_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("contracts.id"), nullable=False, index=True)
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    due_on: Mapped[date] = mapped_column(Date, nullable=False)
+    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(5), nullable=False, server_default="open")
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, server_default="manual")  # manual | renewal_notice
+
+
+# --- Notifications, API keys, webhooks (BUILD_PLAN v3.0 §5) --------------------------------------
+
+WEBHOOK_DELIVERY_STATUSES = ("pending", "delivered", "failed")
+
+
+class Notification(TimestampMixin, Base):
+    """One message for one person, shown under the bell and copied to email."""
+    __tablename__ = "notifications"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    link: Mapped[str | None] = mapped_column(String(300))  # a path inside Orrfin, never another site
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ApiKey(TimestampMixin, Base):
+    """A personal API key. Only its SHA-256 is stored; the key itself is shown once."""
+    __tablename__ = "api_keys"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    prefix: Mapped[str] = mapped_column(String(16), nullable=False)  # first characters, to recognise a key
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    scopes: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WebhookEndpoint(TimestampMixin, Base):
+    """An https address another system gave us, and the events it wants. The secret is a Fernet token."""
+    __tablename__ = "webhook_endpoints"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    url: Mapped[str] = mapped_column(String(500), nullable=False)
+    secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    events: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+
+
+class WebhookDelivery(TimestampMixin, Base):
+    """One event sent (or being sent) to one endpoint, with what the receiver answered."""
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (CheckConstraint(_in("status", WEBHOOK_DELIVERY_STATUSES), name="status"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    endpoint_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("webhook_endpoints.id"), nullable=False, index=True)
+    event: Mapped[str] = mapped_column(String(60), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(12), nullable=False, server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    response_code: Mapped[int | None] = mapped_column(Integer)
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
 # --- Intake forms (BUILD_PLAN v3.0 change 40, §5) ------------------------------------------------
 
 FORM_FIELD_KINDS = ("text", "number", "money", "date", "choice", "user")

@@ -32,6 +32,8 @@ from app.models import (
 from app.modules.audit.service import record_event
 from app.modules.erp_outbox.po import queue_po
 from app.modules.intake_forms import service as intake_forms
+from app.modules.integrations.webhooks import emit as emit_webhook
+from app.modules.notifications.service import notify
 from app.modules.workflow_engine import service as workflow_service
 from app.modules.workflow_engine.evaluate import approval_steps
 
@@ -416,7 +418,20 @@ def decide(db: Session, user: User, request_id: uuid.UUID, step_number: int, dec
         queue_po(db, request, user.id)
     else:
         _audit(db, request, user, "step_approved", payload)
+    if request.status != "in_approval":
+        _announce_outcome(db, request, reason)
     return request
+
+
+def _announce_outcome(db: Session, request: PurchaseRequest, reason: str | None) -> None:
+    """Tell the requester (bell + email) and any subscribed system that the request left approval."""
+    label = f"PR-{request.number:04d}"
+    notify(db, org_id=request.org_id, user_id=request.requested_by, kind=f"request_{request.status}",
+           title=f"{label} was {request.status}", body=reason or request.title, link=f"/requests/{request.id}")
+    if request.status in ("approved", "rejected"):
+        emit_webhook(db, request.org_id, f"request.{request.status}",
+                     {"request_id": request.id, "number": label, "status": request.status,
+                      "amount": request.amount, "currency": request.currency})
 
 
 def next_step_for(db: Session, user: User, request: PurchaseRequest,

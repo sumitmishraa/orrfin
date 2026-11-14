@@ -222,6 +222,12 @@ def assess(db: Session, invoice: Invoice, run_id: uuid.UUID, line_id: uuid.UUID 
         tds_section=section, pan=profile.pan if profile else None,
         first_payment=_first_payment(db, invoice.vendor_id, run_id), bill_confirmed_in_erp=bill == "CONFIRMED",
         missing_from_gstr2b=gstr2b, now=datetime.now(UTC)))
+    from app.modules.suppliers.service import hold_reason_for_vendor  # local import, as in erp_outbox/po.py
+
+    supplier_hold = hold_reason_for_vendor(db, invoice.org_id, invoice.vendor_id)
+    if supplier_hold:
+        # §6e: a critical-risk supplier is not paid until a named reviewer clears the hold.
+        risks = [*risks, {"code": "SUPPLIER_RISK_HOLD", "level": "block", "message": supplier_hold}]
     return {"gross": gross, "tds_base": result.taxable, "tds_section": result.section, "tds_rate": result.rate,
             "tds_amount": result.tds, "tds_reason": result.reason, "net": gross - result.tds, "risk_results": risks}
 

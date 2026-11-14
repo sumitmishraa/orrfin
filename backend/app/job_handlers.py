@@ -9,3 +9,4 @@ from app.modules.invoices import match_job as _match_job  # noqa: F401  (registe
 from app.modules.connectors import router as _connectors_router  # noqa: F401  (registers "erp_prepare")
 from app.modules.erp_outbox import service as _erp_outbox  # noqa: F401  (registers "erp_push")
 from app.modules.payments import service as _payments  # noqa: F401  (registers "bank_settle", the mock bank)
+from app.modules.integrations import webhooks as _webhooks  # noqa: F401  (registers "webhook_deliver")

@@ -31,6 +31,7 @@ from app.models import (
 from app.modules.audit.service import record_event, to_jsonable
 from app.modules.connectors.service import active_connection
 from app.modules.entities.service import entity_for_invoice, regime_of
+from app.modules.integrations.webhooks import emit as emit_webhook
 from app.modules.invoices.providers import get_explainer
 from app.modules.invoices.service import invoice_lines
 from app.modules.matching.config import RULE_SET_VERSION, Tolerances
@@ -178,6 +179,10 @@ def run_match(db: Session, job: Job) -> dict[str, Any]:
                  payload={"status": invoice.status, "rule_set_version": RULE_SET_VERSION,
                           "amount_at_risk": result.amount_at_risk, "risk_score": result.risk_score,
                           "failed": failed})
+    emit_webhook(db, invoice.org_id, f"invoice.{'matched' if result.outcome == 'matched' else 'exception'}",
+                 {"invoice_id": invoice.id, "invoice_no": invoice.invoice_no, "status": invoice.status,
+                  "currency": invoice.currency, "total": invoice.total, "amount_at_risk": result.amount_at_risk,
+                  "failed_rules": failed})
     return {"outcome": result.outcome, "failed": failed, "amount_at_risk": str(result.amount_at_risk)}
 
 
