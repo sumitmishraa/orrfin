@@ -83,6 +83,8 @@ export const NAV_AREAS: NavArea[] = [
     key: "settings", label: "Settings", summary: "Systems Orrfin is connected to", icon: Settings,
     items: [
       { href: "/connectors", label: "Connectors", icon: Cable, roles: ADMIN },
+      { href: "/settings/entities", label: "Legal entities", icon: Building2, roles: FINANCE },
+      { href: "/settings/forms", label: "Request forms", icon: ListChecks, roles: ADMIN },
     ],
   },
 ];

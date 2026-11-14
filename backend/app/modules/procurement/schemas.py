@@ -47,6 +47,9 @@ class RequestCreate(BaseModel):
     needed_by: date | None = None
     suggested_vendor_id: uuid.UUID | None = None
     lines: list[LineIn] = Field(min_length=1, max_length=50)
+    # v3.0 intake forms: the type of request and the answers to its extra questions (text only).
+    request_type_id: uuid.UUID | None = None
+    custom_values: dict[str, Any] = Field(default_factory=dict, max_length=40)
     # Step 24: set when the form was pre-filled by the intake agent; recorded in the audit event.
     ai_draft: "AiDraftMeta | None" = None
 
@@ -63,6 +66,9 @@ class RequestEdit(BaseModel):
     cost_center: str | None = Field(default=None, max_length=60)
     needed_by: date | None = None
     lines: list[LineIn] | None = Field(default=None, min_length=1, max_length=50)
+    # v3.0 intake forms. Sending request_type_id (even null) replaces the type and its answers.
+    request_type_id: uuid.UUID | None = None
+    custom_values: dict[str, Any] | None = Field(default=None, max_length=40)
 
 
 class BuyerLineIn(BaseModel):
@@ -160,6 +166,9 @@ class RequestDetail(RequestSummary):
     suggested_vendor_name: str | None
     completed_by_id: uuid.UUID | None
     approval_round: int
+    request_type_id: uuid.UUID | None = None  # v3.0 intake forms
+    request_type_name: str | None = None
+    custom_values: dict[str, Any] | None = None
     ready_for_po: bool
     lines: list[LineOut]
     current_steps: list[StepOut]

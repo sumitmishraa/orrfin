@@ -25,11 +25,13 @@ from app.models import (
     PurchaseRequest,
     RequestApproval,
     RequestLine,
+    RequestType,
     User,
     Vendor,
 )
 from app.modules.audit.service import record_event
 from app.modules.erp_outbox.po import queue_po
+from app.modules.intake_forms import service as intake_forms
 from app.modules.workflow_engine import service as workflow_service
 from app.modules.workflow_engine.evaluate import approval_steps
 
@@ -123,11 +125,23 @@ def _replace_lines(db: Session, request: PurchaseRequest, lines: list[LineInput]
     request.amount = total
 
 
+def _form_answers(db: Session, org_id: uuid.UUID, request_type_id: uuid.UUID | None,
+                  custom_values: dict | None) -> dict[str, str] | None:
+    """The checked answers to a request type's extra questions (v3.0 intake forms), or None for a plain request."""
+    if request_type_id is None:
+        if custom_values:
+            raise Invalid("Choose a type of request before answering its questions.")
+        return None
+    return intake_forms.checked_answers(db, org_id, request_type_id, custom_values or {})[1]
+
+
 def create_request(db: Session, user: User, *, category_id: uuid.UUID, title: str, justification: str,
                    cost_center: str, needed_by: date | None, lines: list[LineInput],
                    suggested_vendor_id: uuid.UUID | None = None,
-                   ai_draft: dict | None = None) -> PurchaseRequest:
+                   ai_draft: dict | None = None, request_type_id: uuid.UUID | None = None,
+                   custom_values: dict | None = None) -> PurchaseRequest:
     _category(db, user, category_id)
+    answers = _form_answers(db, user.org_id, request_type_id, custom_values)
     if suggested_vendor_id and db.scalar(select(Vendor.id).where(
             Vendor.id == suggested_vendor_id, Vendor.org_id == user.org_id)) is None:
         raise Invalid("Choose a suggested vendor from the list.")
@@ -137,6 +151,7 @@ def create_request(db: Session, user: User, *, category_id: uuid.UUID, title: st
         id=uuid.uuid4(), org_id=user.org_id, number=number, requested_by=user.id, category_id=category_id,
         title=title.strip(), justification=justification.strip(), cost_center=cost_center.strip(),
         needed_by=needed_by, suggested_vendor_id=suggested_vendor_id, status="draft",
+        request_type_id=request_type_id, custom_values=answers,
     )
     db.add(request)
     db.flush()
@@ -153,7 +168,9 @@ def create_request(db: Session, user: User, *, category_id: uuid.UUID, title: st
 def edit_request(db: Session, user: User, request_id: uuid.UUID, *, title: str | None = None,
                  justification: str | None = None, cost_center: str | None = None,
                  needed_by: date | None = None, category_id: uuid.UUID | None = None,
-                 lines: list[LineInput] | None = None) -> PurchaseRequest:
+                 lines: list[LineInput] | None = None,
+                 form: tuple[uuid.UUID | None, dict | None] | None = None) -> PurchaseRequest:
+    """`form` is (request type, answers) when the edit replaces them; None leaves them as they are."""
     request = load_request(db, user, request_id, lock=True)
     if request.requested_by != user.id:
         raise Forbidden("Only the requester can edit this request.")
@@ -169,6 +186,9 @@ def edit_request(db: Session, user: User, request_id: uuid.UUID, *, title: str |
         request.needed_by = needed_by
     if lines is not None:
         _replace_lines(db, request, lines)
+    if form is not None:
+        request.custom_values = _form_answers(db, user.org_id, form[0], form[1])
+        request.request_type_id = form[0]
     _audit(db, request, user, "edited", {"amount": request.amount})
     return request
 
@@ -225,7 +245,8 @@ CATEGORY_STEP = "category_reviewer"
 
 
 def chain_preview(db: Session, org_id: uuid.UUID, category_id: uuid.UUID | None, amount: Decimal, *,
-                  cost_center: str | None = None, currency: str = "INR") -> list[dict]:
+                  cost_center: str | None = None, currency: str = "INR", request_type: str | None = None,
+                  answers: dict[str, str] | None = None) -> list[dict]:
     """The steps a request of this amount and category would need, in order (no side effects).
 
     If the org has published a "request-approval" workflow (v3.0, ADR 0010), its definition
@@ -239,7 +260,9 @@ def chain_preview(db: Session, org_id: uuid.UUID, category_id: uuid.UUID | None,
     if published is not None:
         return approval_steps(published.definition, {
             "amount": amount, "currency": currency, "cost_center": cost_center,
-            "category": category.name if category else None,
+            "category": category.name if category else None, "request_type": request_type,
+            # Intake-form answers (v3.0), addressed in a workflow rule as "custom.<key>".
+            **{f"custom.{key}": value for key, value in (answers or {}).items()},
         })
     steps = [{"role": role, "label": None, "approver_id": None} for role in _policy_steps(db, org_id, amount)]
     if category is not None and category.extra_approver_id is not None:
@@ -254,8 +277,10 @@ def _start_chain(db: Session, request: PurchaseRequest) -> list[str]:
     The chain is copied into request_approvals here, so later edits to tiers or categories
     (Rules page) never change a chain that is already running.
     """
+    request_type = db.get(RequestType, request.request_type_id) if request.request_type_id else None
     steps = chain_preview(db, request.org_id, request.category_id, request.amount,
-                          cost_center=request.cost_center, currency=request.currency)
+                          cost_center=request.cost_center, currency=request.currency,
+                          request_type=request_type.key if request_type else None, answers=request.custom_values)
     request.approval_round += 1
     for number, step in enumerate(steps, start=1):
         db.add(RequestApproval(org_id=request.org_id, request_id=request.id, round=request.approval_round,

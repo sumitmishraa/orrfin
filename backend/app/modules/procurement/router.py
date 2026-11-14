@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentUser, DbSession
-from app.models import AuditEvent, Category, PurchaseRequest, RequestApproval, User, Vendor
+from app.models import AuditEvent, Category, PurchaseRequest, RequestApproval, RequestType, User, Vendor
 from app.modules.erp_outbox import service as outbox_service
 from app.modules.erp_outbox.po import po_unavailable_reason
 from app.modules.procurement import service
@@ -141,6 +141,9 @@ def _detail(db: Session, user: User, request: PurchaseRequest) -> RequestDetail:
         vendor_name=vendors.get(request.vendor_id), suggested_vendor_id=request.suggested_vendor_id,
         suggested_vendor_name=vendors.get(request.suggested_vendor_id),
         completed_by_id=request.completed_by_id, approval_round=request.approval_round,
+        request_type_id=request.request_type_id, custom_values=request.custom_values,
+        request_type_name=db.scalar(select(RequestType.name).where(RequestType.id == request.request_type_id))
+        if request.request_type_id else None,
         # "approved" = ready for the PO draft; the outbox moves it to po_drafted, the next sync to po_open.
         ready_for_po=request.status == "approved",
         lines=[LineOut.model_validate(line) for line in service.request_lines(db, request)],
@@ -188,7 +191,8 @@ def create_request(body: RequestCreate, user: CurrentUser, db: DbSession) -> Req
         db, user, category_id=body.category_id, title=body.title, justification=body.justification,
         cost_center=body.cost_center, needed_by=body.needed_by, suggested_vendor_id=body.suggested_vendor_id,
         lines=[service.LineInput(**line.model_dump()) for line in body.lines],
-        ai_draft=body.ai_draft.model_dump() if body.ai_draft else None)
+        ai_draft=body.ai_draft.model_dump() if body.ai_draft else None,
+        request_type_id=body.request_type_id, custom_values=body.custom_values)
     return _commit_and_show(db, user, request)
 
 
@@ -202,7 +206,9 @@ def edit_request(request_id: uuid.UUID, body: RequestEdit, user: CurrentUser, db
     lines = [service.LineInput(**line.model_dump()) for line in body.lines] if body.lines is not None else None
     request = service.edit_request(
         db, user, request_id, title=body.title, justification=body.justification,
-        cost_center=body.cost_center, needed_by=body.needed_by, category_id=body.category_id, lines=lines)
+        cost_center=body.cost_center, needed_by=body.needed_by, category_id=body.category_id, lines=lines,
+        # Only an edit that names the type touches the form answers (a null type clears them).
+        form=(body.request_type_id, body.custom_values) if "request_type_id" in body.model_fields_set else None)
     return _commit_and_show(db, user, request)
 
 

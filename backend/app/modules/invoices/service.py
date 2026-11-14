@@ -8,6 +8,7 @@ duties later: whoever uploaded or edited an invoice may not approve its exceptio
 """
 
 import hashlib
+import re
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -41,7 +42,9 @@ UPLOAD_TYPES = {"application/pdf": b"%PDF-", "image/jpeg": b"\xff\xd8\xff", "ima
 EXTENSIONS = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png"}
 EDITABLE_STATUSES = ("needs_review", "manual_entry", "correction_requested")
 TEXT_FIELDS = ("vendor_name", "vendor_gstin", "buyer_gstin", "invoice_no", "po_reference", "place_of_supply")
-MONEY_FIELDS = ("subtotal", "cgst", "sgst", "igst", "total")
+MONEY_FIELDS = ("subtotal", "cgst", "sgst", "igst", "vat", "total")
+# How a currency is sometimes printed, mapped to its code. Nothing else is guessed.
+CURRENCY_ALIASES = {"₹": "INR", "RS": "INR", "RS.": "INR", "RUPEES": "INR", "DHS": "AED", "DH": "AED", "DIRHAMS": "AED"}
 LINE_ATTRS = ("description", "item_code", "hsn", "qty", "rate", "amount")
 
 
@@ -83,7 +86,7 @@ def fields_of(db: Session, invoice: Invoice) -> InvoiceFields:
     return InvoiceFields(
         vendor_gstin=invoice.vendor_gstin, buyer_gstin=invoice.buyer_gstin, invoice_no=invoice.invoice_no,
         invoice_date=invoice.invoice_date.isoformat() if invoice.invoice_date else None,
-        po_reference=invoice.po_reference,
+        po_reference=invoice.po_reference, currency=invoice.currency,
         lines=[LineFields(l.description, l.item_code, l.hsn, _text(l.qty), _text(l.rate), _text(l.amount))
                for l in invoice_lines(db, invoice)],
         **{name: _text(getattr(invoice, name)) for name in MONEY_FIELDS},
@@ -91,7 +94,18 @@ def fields_of(db: Session, invoice: Invoice) -> InvoiceFields:
 
 
 def issues_of(db: Session, invoice: Invoice) -> list[Issue]:
-    return validate(fields_of(db, invoice), date.today())
+    from app.modules.entities.service import regime_of
+    from app.modules.invoices.match_job import billed_entity  # local import: match_job imports this module
+
+    return validate(fields_of(db, invoice), date.today(), regime_of(billed_entity(db, invoice)))
+
+
+def currency_code(printed: str | None) -> str:
+    """The currency as a three-letter code. An unreadable value stays INR, as before v3.0; finance can correct it."""
+    text = (printed or "").strip().upper()
+    if text in CURRENCY_ALIASES:
+        return CURRENCY_ALIASES[text]
+    return text if re.fullmatch(r"[A-Z]{3}", text) else "INR"
 
 
 def _derive_keys(invoice: Invoice) -> None:
@@ -140,7 +154,7 @@ def _apply_extraction(db: Session, invoice: Invoice, result: ExtractionResult, s
         value = getattr(data, name)
         setattr(invoice, name, value.strip() if isinstance(value, str) else value)
     invoice.invoice_date = parse_date(data.invoice_date)
-    invoice.currency = data.currency or "INR"
+    invoice.currency = currency_code(data.currency)
     for name in MONEY_FIELDS:
         # A value the model wrote in an odd format is left empty and flagged for the reviewer.
         setattr(invoice, name, parse_money(getattr(data, name)))
@@ -222,6 +236,10 @@ def edit_fields(db: Session, user: User, invoice_id: uuid.UUID, *, fields: dict[
             new = parse_date(value) if value else None
             if value and new is None:
                 raise Invalid("invoice_date: use a real date in the form YYYY-MM-DD.")
+        elif name == "currency":
+            new = (value or "").upper()
+            if not re.fullmatch(r"[A-Z]{3}", new):
+                raise Invalid("currency: use the three-letter code, for example INR or AED.")
         else:
             raise Invalid(f"{name} cannot be edited.")
         _record(db, invoice, user, name, getattr(invoice, name), new, changes)

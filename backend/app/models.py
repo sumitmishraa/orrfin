@@ -209,6 +209,11 @@ class PurchaseRequest(TimestampMixin, Base):
     # Each (re)start of the approval chain gets a new round; older rounds stay as history.
     approval_round: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="draft")
+    # v3.0 (additive): the legal entity buying; NULL means the org's default entity.
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("legal_entities.id"))
+    # v3.0 intake forms (additive): the type it was raised as and the answers to that type's questions.
+    request_type_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("request_types.id"))
+    custom_values: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 class RequestLine(TimestampMixin, Base):
@@ -370,6 +375,10 @@ class Invoice(TimestampMixin, Base):
     extraction_error: Mapped[str | None] = mapped_column(Text)
     confirmed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # v3.0 (additive, §6d): the entity it was matched for, and the single tax amount of a UAE invoice.
+    # `vendor_gstin` / `buyer_gstin` hold the tax number whatever the regime (GSTIN or TRN).
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("legal_entities.id"))
+    vat: Mapped[Decimal | None] = mapped_column(MONEY)
 
 
 class InvoiceLine(TimestampMixin, Base):
@@ -760,3 +769,99 @@ class WorkflowVersion(TimestampMixin, Base):
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     published_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# --- Intake forms (BUILD_PLAN v3.0 change 40, §5) ------------------------------------------------
+
+FORM_FIELD_KINDS = ("text", "number", "money", "date", "choice", "user")
+
+
+class RequestType(TimestampMixin, Base):
+    """A kind of purchase request ("Software purchase") with its own extra questions."""
+    __tablename__ = "request_types"
+    __table_args__ = (UniqueConstraint("org_id", "key"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    key: Mapped[str] = mapped_column(String(40), nullable=False)  # never changes: workflow rules name it
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=False, server_default="")
+    workflow_definition_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workflow_definitions.id"))
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+
+class FormField(TimestampMixin, Base):
+    """One extra question on a request type's form. Answers are stored on the request as text."""
+    __tablename__ = "form_fields"
+    __table_args__ = (
+        UniqueConstraint("request_type_id", "key"),
+        CheckConstraint(_in("kind", FORM_FIELD_KINDS), name="kind"),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    request_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("request_types.id"), nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(40), nullable=False)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    options: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+# --- Legal entities and exchange rates (BUILD_PLAN v3.0 change 38, §5, §6d) ----------------------
+
+TAX_REGIMES = ("in_gst", "ae_vat")
+CURRENCIES = ("INR", "AED", "USD", "EUR")
+FX_RATE = Numeric(18, 8)
+
+
+class LegalEntity(TimestampMixin, Base):
+    """One company of the org that buys and is billed. Its tax regime decides how invoices are checked (§6d)."""
+    __tablename__ = "legal_entities"
+    __table_args__ = (
+        UniqueConstraint("org_id", "name"),
+        CheckConstraint(_in("tax_regime", TAX_REGIMES), name="tax_regime"),
+        CheckConstraint(_in("base_currency", CURRENCIES), name="base_currency"),
+        # Documents without an entity belong to this one, so there is exactly one per org.
+        Index("uq_legal_entities_one_default", "org_id", unique=True, postgresql_where=text("is_default")),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    country: Mapped[str] = mapped_column(String(2), nullable=False)  # IN or AE
+    base_currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    tax_regime: Mapped[str] = mapped_column(String(10), nullable=False)
+    tax_id: Mapped[str | None] = mapped_column(String(15))  # GSTIN in India, TRN in the UAE
+    state_code: Mapped[str | None] = mapped_column(String(2))  # GST state code; India only
+    erp_connection_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("erp_connections.id"))
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+
+class EntityMembership(TimestampMixin, Base):
+    """A person who works for an entity. An entity with no members is open to the whole org."""
+    __tablename__ = "entity_memberships"
+    __table_args__ = (UniqueConstraint("entity_id", "user_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+
+
+class FxRate(TimestampMixin, Base):
+    """1 base = `rate` quote on `as_of`, typed in by a named person. Rows are never updated."""
+    __tablename__ = "fx_rates"
+    __table_args__ = (
+        UniqueConstraint("org_id", "base_currency", "quote_currency", "as_of"),
+        CheckConstraint("rate > 0", name="rate_positive"),
+        CheckConstraint("base_currency <> quote_currency", name="two_currencies"),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    base_currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    quote_currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    rate: Mapped[Decimal] = mapped_column(FX_RATE, nullable=False)
+    as_of: Mapped[date] = mapped_column(Date, nullable=False)
+    entered_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)

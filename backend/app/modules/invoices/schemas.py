@@ -84,6 +84,9 @@ class InvoiceDetail(InvoiceSummary):
     cgst: Decimal | None
     sgst: Decimal | None
     igst: Decimal | None
+    vat: Decimal | None = None  # v3.0: the single tax amount of a UAE invoice
+    tax_regime: str = "in_gst"  # v3.0: which country's tax checks apply (§6d)
+    entity_name: str | None = None
     uploaded_by_name: str
     confirmed_by_name: str | None
     confirmed_at: datetime | None

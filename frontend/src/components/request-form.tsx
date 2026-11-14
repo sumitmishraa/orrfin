@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { BudgetNotice } from "@/components/workflow";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { formatINR, lineTotal, sumMoney } from "@/lib/format";
-import type { Category, RequestDetail, Vendor } from "@/lib/types";
+import type { Category, RequestDetail, RequestType, Vendor } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
 
 export interface RequestFormValues {
@@ -24,6 +24,9 @@ export interface RequestFormValues {
   needed_by: string | null;
   suggested_vendor_id: string | null;
   lines: { description: string; qty: string; est_rate: string }[];
+  /** v3.0 intake forms: the type of request and the answers to that type's extra questions. */
+  request_type_id?: string | null;
+  custom_values?: Record<string, string>;
 }
 
 const BLANK_LINE = { description: "", qty: "1", est_rate: "" };
@@ -55,14 +58,22 @@ export function RequestForm({
     cost_center: initial?.cost_center ?? "",
     needed_by: initial?.needed_by ?? null,
     suggested_vendor_id: initial?.suggested_vendor_id ?? null,
+    request_type_id: initial?.request_type_id ?? null,
+    custom_values: initial?.custom_values ?? {},
     lines: initial?.lines.map((l) => ({ description: l.description, qty: l.qty, est_rate: l.est_rate })) ?? [
       { ...BLANK_LINE },
     ],
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const requestTypes = useApi<RequestType[]>("/request-types");
+  const requestType = requestTypes.data?.find((t) => t.id === values.request_type_id) ?? null;
+  const people = useApi<{ id: string; full_name: string }[]>(requestType?.fields.some((f) => f.kind === "user") ? "/users" : null);
+  const answers = values.custom_values ?? {};
+  const setAnswer = (key: string, value: string) =>
+    setValues((v) => ({ ...v, custom_values: { ...(v.custom_values ?? {}), [key]: value } }));
 
-  const set = <K extends keyof RequestFormValues>(key: K, value: RequestFormValues[K]) =>
+  const set =<K extends keyof RequestFormValues>(key: K, value: RequestFormValues[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
   const setLine = (i: number, key: "description" | "qty" | "est_rate", value: string) =>
     setValues((v) => ({ ...v, lines: v.lines.map((l, n) => (n === i ? { ...l, [key]: value } : l)) }));
@@ -72,6 +83,8 @@ export function RequestForm({
   function validate(): string | null {
     if (!values.category_id) return "Choose a category.";
     if (!values.title.trim()) return "Give the request a title.";
+    const unanswered = requestType?.fields.find((f) => f.required && !(answers[f.key] ?? "").trim());
+    if (unanswered) return `${unanswered.label}: this question must be answered.`;
     for (const [i, line] of values.lines.entries()) {
       if (!line.description.trim()) return `Line ${i + 1}: describe the item.`;
       if (!DECIMAL.test(line.qty) || Number(line.qty) <= 0) return `Line ${i + 1}: quantity must be a number above 0.`;
@@ -137,6 +150,38 @@ export function RequestForm({
           </Select>
         </Field>
       </div>
+
+      {requestTypes.data && requestTypes.data.length > 0 ? (
+        <div className="grid gap-4 rounded-xl border border-border bg-white p-5 md:grid-cols-2">
+          <Field label="Type of request" htmlFor="request_type" hint={requestType?.description || "Some types ask a few extra questions."}
+                 className="md:col-span-2">
+            <Select id="request_type" value={values.request_type_id ?? ""}
+                    onChange={(e) => setValues((v) => ({ ...v, request_type_id: e.target.value || null, custom_values: {} }))}>
+              <option value="">Standard purchase</option>
+              {requestTypes.data.filter((t) => t.active || t.id === values.request_type_id).map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </Select>
+          </Field>
+          {requestType?.fields.map((f) => (
+            <Field key={f.key} label={f.required ? f.label : `${f.label} (optional)`} htmlFor={`custom-${f.key}`}>
+              {f.kind === "choice" || f.kind === "user" ? (
+                <Select id={`custom-${f.key}`} value={answers[f.key] ?? ""} onChange={(e) => setAnswer(f.key, e.target.value)}>
+                  <option value="">Choose…</option>
+                  {f.kind === "choice"
+                    ? f.options.map((o) => <option key={o}>{o}</option>)
+                    : people.data?.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                </Select>
+              ) : (
+                <Input id={`custom-${f.key}`} type={f.kind === "date" ? "date" : "text"}
+                       inputMode={f.kind === "number" || f.kind === "money" ? "decimal" : undefined}
+                       placeholder={f.kind === "money" ? "e.g. 54870.00" : undefined} maxLength={2000}
+                       value={answers[f.key] ?? ""} onChange={(e) => setAnswer(f.key, e.target.value)} />
+              )}
+            </Field>
+          ))}
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-border bg-white p-5">
         <h2 className="mb-3 text-sm font-semibold text-heading">Items</h2>

@@ -67,6 +67,11 @@ def bill_unavailable_reason(db: Session, invoice: Invoice) -> str | None:
     po = db.get(PurchaseOrder, invoice.po_id) if invoice.po_id else None
     if po is None or po.vendor_id is None:
         return "No ERP purchase order is linked, so there is no ERP vendor to bill. Enter the bill in the ERP by hand."
+    if (invoice.vat or 0) > 0:
+        # The draft-bill contract carries Indian GST columns only; writing a VAT bill through it would
+        # give the ERP a bill whose tax does not add up. VAT write-back arrives with the UAE connectors.
+        return ("This invoice carries UAE VAT. Orrfin does not write VAT bills to the ERP yet; "
+                "enter the bill in the ERP by hand.")
     connection = db.get(ErpConnection, po.erp_connection_id)
     if not connection.is_active:
         return (f"This invoice was matched against {spec_for(connection.system).name} ({connection.mode}), which is "

@@ -26,6 +26,24 @@ export interface UserRef {
   role: Role;
 }
 
+/** v3.0 intake forms: one extra question on a request type's form. */
+export interface FormFieldDef {
+  key: string;
+  label: string;
+  kind: "text" | "number" | "money" | "date" | "choice" | "user";
+  required: boolean;
+  options: string[];
+}
+
+export interface RequestType {
+  id: string;
+  key: string;
+  name: string;
+  description: string;
+  active: boolean;
+  fields: FormFieldDef[];
+}
+
 export interface Vendor {
   id: string;
   erp_ref: string;
@@ -116,6 +134,9 @@ export interface RequestDetail extends RequestSummary {
   suggested_vendor_name: string | null;
   completed_by_id: string | null;
   approval_round: number;
+  request_type_id: string | null;
+  request_type_name: string | null;
+  custom_values: Record<string, string> | null;
   ready_for_po: boolean;
   lines: RequestLine[];
   current_steps: ApprovalStep[];
@@ -222,6 +243,9 @@ export interface InvoiceDetail extends InvoiceSummary {
   cgst: string | null;
   sgst: string | null;
   igst: string | null;
+  vat: string | null;
+  tax_regime: "in_gst" | "ae_vat";
+  entity_name: string | null;
   uploaded_by_name: string;
   confirmed_by_name: string | null;
   confirmed_at: string | null;

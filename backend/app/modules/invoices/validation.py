@@ -10,13 +10,16 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
+from app.modules.entities.fx import CURRENCIES
+from app.modules.matching.tax import TRN_FORMAT
+
 # BUILD_PLAN §6 rule 7. The check character is not verified here: advisory only until checked
 # against an official GSTN source.
 GSTIN_FORMAT = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
 DATE_WINDOW = timedelta(days=400)
 # §6 rule 4: invoice-level arithmetic tolerance (₹1.00), reported as round-off.
 ARITHMETIC_TOLERANCE = Decimal("1.00")
-MONEY_FIELDS = ("subtotal", "cgst", "sgst", "igst", "total")
+MONEY_FIELDS = ("subtotal", "cgst", "sgst", "igst", "vat", "total")
 
 
 @dataclass
@@ -42,6 +45,9 @@ class InvoiceFields:
     sgst: str | None = None
     igst: str | None = None
     total: str | None = None
+    # v3.0 (§6d): the single tax amount of a UAE invoice (empty on an Indian one), and the currency printed.
+    vat: str | None = None
+    currency: str = "INR"
 
 
 @dataclass
@@ -81,8 +87,11 @@ def fiscal_year(day: date) -> str:
     return f"{start}-{str(start + 1)[2:]}"
 
 
-def validate(fields: InvoiceFields, today: date) -> list[Issue]:
+def validate(fields: InvoiceFields, today: date, regime: str = "in_gst") -> list[Issue]:
+    """`regime` is the billed entity's tax regime (§6d): it picks GSTIN or TRN as the tax-number format."""
     issues: list[Issue] = []
+    tax_id, tax_id_format, format_code = (
+        ("TRN", TRN_FORMAT, "TRN_FORMAT") if regime == "ae_vat" else ("GSTIN", GSTIN_FORMAT, "GSTIN_FORMAT"))
 
     def flag(name: str, code: str, message: str) -> None:
         issues.append(Issue(name, code, message))
@@ -92,13 +101,16 @@ def validate(fields: InvoiceFields, today: date) -> list[Issue]:
             flag(name, "REQUIRED", "This field is required.")
 
     gstin = (fields.vendor_gstin or "").strip()
-    if gstin and not GSTIN_FORMAT.match(gstin):
-        flag("vendor_gstin", "GSTIN_FORMAT", f"“{gstin}” is not a valid GSTIN format.")
+    if gstin and not tax_id_format.match(gstin):
+        flag("vendor_gstin", format_code, f"“{gstin}” is not a valid {tax_id} format.")
     elif not gstin:
-        flag("vendor_gstin", "GSTIN_FORMAT", "The vendor GSTIN is missing.")
+        flag("vendor_gstin", format_code, f"The vendor {tax_id} is missing.")
     buyer = (fields.buyer_gstin or "").strip()
-    if buyer and not GSTIN_FORMAT.match(buyer):
-        flag("buyer_gstin", "GSTIN_FORMAT", f"“{buyer}” is not a valid GSTIN format.")
+    if buyer and not tax_id_format.match(buyer):
+        flag("buyer_gstin", format_code, f"“{buyer}” is not a valid {tax_id} format.")
+    if fields.currency not in CURRENCIES:
+        flag("currency", "CURRENCY_UNSUPPORTED",
+             f"“{fields.currency}” is not a currency Orrfin handles ({', '.join(CURRENCIES)}).")
 
     if fields.invoice_date:
         day = parse_date(fields.invoice_date)
@@ -108,6 +120,8 @@ def validate(fields: InvoiceFields, today: date) -> list[Issue]:
             flag("invoice_date", "DATE_OUT_OF_RANGE", "The date is more than 400 days from today.")
 
     money = {name: parse_money(getattr(fields, name)) for name in MONEY_FIELDS}
+    if fields.vat in (None, ""):
+        money["vat"] = Decimal("0")  # an Indian invoice has no VAT line; that is not a missing field
     for name, value in money.items():
         if value is None:
             flag(name, "NOT_A_NUMBER", "Enter a plain number, e.g. 54870.00.")
@@ -131,7 +145,7 @@ def validate(fields: InvoiceFields, today: date) -> list[Issue]:
             if abs(sum(line_amounts) - money["subtotal"]) > ARITHMETIC_TOLERANCE:
                 flag("subtotal", "SUBTOTAL_MISMATCH",
                      f"The lines add up to {sum(line_amounts):.2f}, not {fields.subtotal}.")
-        expected_total = money["subtotal"] + money["cgst"] + money["sgst"] + money["igst"]
+        expected_total = money["subtotal"] + money["cgst"] + money["sgst"] + money["igst"] + money["vat"]
         if abs(expected_total - money["total"]) > ARITHMETIC_TOLERANCE:
             flag("total", "TOTAL_MISMATCH", f"Subtotal plus taxes is {expected_total:.2f}, not {fields.total}.")
         if abs(money["cgst"] - money["sgst"]) > ARITHMETIC_TOLERANCE:

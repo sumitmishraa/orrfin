@@ -16,6 +16,7 @@ from app.errors import NotFound
 from app.config import get_settings
 from app.models import Document, Invoice, MatchResult, User
 from app.modules.audit.service import timeline
+from app.modules.entities.service import regime_of
 from app.modules.invoices import service
 from app.modules.invoices.providers import get_file_store
 from app.modules.invoices.schemas import (
@@ -90,10 +91,14 @@ def build_detail(db: Session, user: User, invoice: Invoice) -> InvoiceDetail:
     extraction = service.latest_extraction(db, invoice)
     is_writer = user.role in service.WRITE_ROLES
     editable = invoice.status in service.EDITABLE_STATUSES
+    from app.modules.invoices.match_job import billed_entity  # local import, as for match_view above
+
+    entity = billed_entity(db, invoice)
     detail = InvoiceDetail(
         **_summary(db, invoice, document).model_dump(),
         vendor_gstin=invoice.vendor_gstin, buyer_gstin=invoice.buyer_gstin, place_of_supply=invoice.place_of_supply,
         currency=invoice.currency, subtotal=invoice.subtotal, cgst=invoice.cgst, sgst=invoice.sgst, igst=invoice.igst,
+        vat=invoice.vat, tax_regime=regime_of(entity), entity_name=entity.name if entity else None,
         uploaded_by_name=_name(db, document.uploaded_by) or "", confirmed_by_name=_name(db, invoice.confirmed_by),
         confirmed_at=invoice.confirmed_at, extraction_error=invoice.extraction_error,
         lines=[InvoiceLineOut(line_no=l.line_no, description=l.description, item_code=l.item_code, hsn=l.hsn,

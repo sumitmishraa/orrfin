@@ -22,6 +22,7 @@ from app.models import (
     Invoice,
     InvoiceLine,
     Job,
+    LegalEntity,
     MatchResult,
     PoLine,
     PurchaseOrder,
@@ -29,6 +30,7 @@ from app.models import (
 )
 from app.modules.audit.service import record_event, to_jsonable
 from app.modules.connectors.service import active_connection
+from app.modules.entities.service import entity_for_invoice, regime_of
 from app.modules.invoices.providers import get_explainer
 from app.modules.invoices.service import invoice_lines
 from app.modules.matching.config import RULE_SET_VERSION, Tolerances
@@ -59,6 +61,12 @@ def find_po(db: Session, invoice: Invoice) -> PurchaseOrder | None:
         or_(PurchaseOrder.erp_ref == ref, PurchaseOrder.po_number == ref))).all()
     # Prefer the ERP's own id when both happen to exist.
     return next((p for p in matches if p.erp_ref == ref), matches[0] if matches else None)
+
+
+def billed_entity(db: Session, invoice: Invoice) -> LegalEntity | None:
+    """The legal entity this invoice is billed to; its tax regime picks the checks (§6d)."""
+    po = db.get(PurchaseOrder, invoice.po_id) if invoice.po_id else find_po(db, invoice)
+    return entity_for_invoice(db, invoice, po)
 
 
 def erp_snapshot(db: Session, po: PurchaseOrder | None) -> dict[str, Any]:
@@ -102,8 +110,10 @@ def build_input(db: Session, invoice: Invoice) -> tuple[MatchInput, PurchaseOrde
             lines=[InvoiceLineIn(l.line_no, l.description, l.item_code, l.hsn, l.qty, l.rate, l.amount)
                    for l in invoice_lines(db, invoice)],
             subtotal=invoice.subtotal or ZERO, cgst=invoice.cgst or ZERO, sgst=invoice.sgst or ZERO,
-            igst=invoice.igst or ZERO, total=invoice.total or ZERO),
-        po=PoIn(erp_ref=po.erp_ref, status=po.status, vendor_gstin=vendor.gstin if vendor else None) if po else None,
+            igst=invoice.igst or ZERO, total=invoice.total or ZERO,
+            vat=invoice.vat or ZERO, currency=invoice.currency),
+        po=PoIn(erp_ref=po.erp_ref, status=po.status, vendor_gstin=vendor.gstin if vendor else None,
+                currency=po.currency) if po else None,
         po_lines=[PoLineIn(id=str(q["line"].id), erp_ref=q["line"].erp_ref, item_code=q["line"].item_code,
                            hsn=q["line"].hsn, qty=q["line"].qty, rate=q["line"].rate, tax_rate=q["line"].tax_rate,
                            received_to_date=q["received"], invoiced_to_date=q["invoiced"]) for q in quantities],
@@ -111,6 +121,7 @@ def build_input(db: Session, invoice: Invoice) -> tuple[MatchInput, PurchaseOrde
                                      fiscal_year=p.fiscal_year, total=p.total, document_sha256=sha)
                         for p, sha in priors],
         tolerances=Tolerances(),
+        tax_regime=regime_of(entity_for_invoice(db, invoice, po)),
     )
     return inp, po
 
@@ -147,6 +158,7 @@ def run_match(db: Session, job: Job) -> dict[str, Any]:
         org_id=invoice.org_id, invoice_id=invoice.id, rule_set_version=result.rule_set_version,
         outcome=result.outcome, amount_at_risk=result.amount_at_risk, risk_score=result.risk_score,
         inputs_snapshot=to_jsonable({"erp": erp_snapshot(db, po), "tolerances": inp.tolerances.as_json(),
+                                     "tax_regime": inp.tax_regime,
                                      "po": inp.po.__dict__ if inp.po else None,
                                      "po_lines": [l.__dict__ for l in inp.po_lines],
                                      "invoice": {k: v for k, v in inp.invoice.__dict__.items() if k != "lines"}}),
@@ -157,6 +169,8 @@ def run_match(db: Session, job: Job) -> dict[str, Any]:
         line.pairing_method = pairing[1] if pairing else None
     invoice.po_id = po.id if po else None
     invoice.vendor_id = po.vendor_id if po else None
+    entity = entity_for_invoice(db, invoice, po)
+    invoice.entity_id = entity.id if entity else None
     invoice.status = result.outcome
     failed = [r["code"] for r in rule_json if r["status"] == "fail"]
     record_event(db, org_id=invoice.org_id, entity_type="invoice", entity_id=invoice.id, actor_id=None,

@@ -14,7 +14,7 @@ from app.ports.extractor import ExtractedInvoice, ExtractionResult, ExtractorUna
 
 FAKE_MODEL_ID = "fake-answer-key"
 _HEADER_FIELDS = ("vendor_name", "vendor_gstin", "buyer_gstin", "invoice_no", "invoice_date",
-                  "po_reference", "subtotal", "cgst", "sgst", "igst", "total")
+                  "po_reference", "subtotal", "cgst", "sgst", "igst", "vat", "total")
 
 
 def _key_from_file(path: Path) -> dict:

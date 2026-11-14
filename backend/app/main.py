@@ -27,6 +27,8 @@ from app.modules.review.router import router as review_router
 from app.modules.rules.router import router as rules_router
 from app.modules.workflows.router import router as workflows_router
 from app.modules.sync.router import router as sync_router
+from app.modules.entities.router import router as entities_router
+from app.modules.intake_forms.router import router as intake_forms_router
 from app.modules.workflow_engine.router import router as workflow_engine_router
 from app.security.http import install_http_guards
 
@@ -79,6 +81,8 @@ def create_app() -> FastAPI:
     app.include_router(close_router)
     app.include_router(gst_router)
     app.include_router(workflow_engine_router)
+    app.include_router(entities_router)
+    app.include_router(intake_forms_router)
     return app
 
 

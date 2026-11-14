@@ -39,6 +39,7 @@ class ExtractedInvoice(BaseModel):
     cgst: str
     sgst: str
     igst: str
+    vat: str = Field(default="0.00", description="UAE VAT amount; 0.00 on an Indian GST invoice")
     total: str
     evidence: list[FieldEvidence] = Field(default_factory=list)
     confidence: Literal["high", "medium", "low"] = "medium"

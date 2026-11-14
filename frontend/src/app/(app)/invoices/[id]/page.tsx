@@ -22,18 +22,26 @@ import { formatDateTime, formatINR, formatQty } from "@/lib/format";
 import type { InvoiceDetail, InvoiceLine, RuleResult } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
 
-const HEADER_FIELDS: [keyof InvoiceDetail, string][] = [
-  ["vendor_name", "Vendor"], ["vendor_gstin", "Vendor GSTIN"], ["invoice_no", "Invoice number"],
-  ["invoice_date", "Invoice date (YYYY-MM-DD)"], ["po_reference", "Buyer's PO number"], ["buyer_gstin", "Buyer GSTIN"],
-  ["place_of_supply", "Place of supply (state code)"], ["subtotal", "Taxable value (₹)"], ["cgst", "CGST (₹)"],
-  ["sgst", "SGST (₹)"], ["igst", "IGST (₹)"], ["total", "Invoice total (₹)"],
-];
+/** The fields a reviewer checks. A UAE invoice has a TRN and one VAT amount instead of GSTIN and CGST/SGST/IGST (§6d). */
+function headerFields(invoice: InvoiceDetail): [keyof InvoiceDetail, string][] {
+  const money = invoice.currency === "INR" ? "₹" : invoice.currency;
+  const shared: [keyof InvoiceDetail, string][] = [
+    ["vendor_name", "Vendor"], ["invoice_no", "Invoice number"], ["invoice_date", "Invoice date (YYYY-MM-DD)"],
+    ["po_reference", "Buyer's PO number"], ["currency", "Currency (INR, AED, USD or EUR)"],
+    ["subtotal", `Taxable value (${money})`],
+  ];
+  const tax: [keyof InvoiceDetail, string][] = invoice.tax_regime === "ae_vat"
+    ? [["vendor_gstin", "Vendor TRN"], ["buyer_gstin", "Buyer TRN"], ["vat", `VAT (${money})`]]
+    : [["vendor_gstin", "Vendor GSTIN"], ["buyer_gstin", "Buyer GSTIN"], ["place_of_supply", "Place of supply (state code)"],
+       ["cgst", "CGST (₹)"], ["sgst", "SGST (₹)"], ["igst", "IGST (₹)"]];
+  return [...shared, ...tax, ["total", `Invoice total (${money})`]];
+}
 const LINE_COLS: (keyof InvoiceLine)[] = ["description", "item_code", "hsn", "qty", "rate", "amount"];
 
 function ReviewForm({ invoice, onChange }: { invoice: InvoiceDetail; onChange: (i: InvoiceDetail) => void }) {
   const editable = invoice.allowed.edit;
   const [fields, setFields] = useState<Record<string, string>>(
-    Object.fromEntries(HEADER_FIELDS.map(([k]) => [k, (invoice[k] as string | null) ?? ""])),
+    Object.fromEntries(headerFields(invoice).map(([k]) => [k, (invoice[k] as string | null) ?? ""])),
   );
   const [lines, setLines] = useState(invoice.lines.map((l) => Object.fromEntries(LINE_COLS.map((c) => [c, String(l[c] ?? "")]))));
   const [asPrinted, setAsPrinted] = useState(false);
@@ -57,7 +65,7 @@ function ReviewForm({ invoice, onChange }: { invoice: InvoiceDetail; onChange: (
   return (
     <Panel title={editable ? "Check the fields" : "Fields"}>
       <div className="grid gap-3 sm:grid-cols-2">
-        {HEADER_FIELDS.map(([key, label]) => {
+        {headerFields(invoice).map(([key, label]) => {
           const issues = issueFor(key);
           const evidence = invoice.evidence[key];
           return (
