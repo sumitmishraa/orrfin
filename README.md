@@ -86,6 +86,12 @@ ERP's published API format). To connect a real free account: create it, then fol
 [docs/CONNECT_ERPS.md](docs/CONNECT_ERPS.md) (paste keys → Test connection → Prepare demo data → Make active).
 Keys are stored encrypted with `ORRFIN_SECRET_KEY`, which `scripts/dev.ps1` creates in `.env` (ADR 0006).
 
+## Demo link on AWS (Step 28)
+
+Follow [docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md): create one Ubuntu server in Mumbai, clone this repo, run
+`sudo bash infra/deploy.sh`. It prints the HTTPS demo link and a new random demo password (the password
+above stays for the laptop only).
+
 ## Tests
 
 ```powershell

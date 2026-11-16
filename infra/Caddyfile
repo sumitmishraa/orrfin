@@ -1,0 +1,7 @@
+# Caddy (BUILD_PLAN §3 Hosting): the only container reachable from the internet. It gets a free
+# HTTPS certificate for SITE_ADDRESS (Let's Encrypt) and forwards every request to the web app.
+# The web app forwards /api/* to the API, so the browser only ever talks to this one address.
+{$SITE_ADDRESS} {
+	encode gzip
+	reverse_proxy web:3000
+}

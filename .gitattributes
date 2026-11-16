@@ -1,3 +1,9 @@
 # Binary files: never convert line endings (a CRLF-rewritten PDF is corrupt)
 *.pdf binary
 *.png binary
+
+# Files that run on the Linux server must keep Linux line endings, even from a Windows checkout.
+*.sh text eol=lf
+Dockerfile text eol=lf
+Caddyfile text eol=lf
+*.yml text eol=lf

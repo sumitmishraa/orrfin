@@ -32,6 +32,7 @@ MCP client ─────────── POST /mcp (API key) ────┘
 | `modules/contracts/` | Contracts | AI/pattern proposals must quote the PDF; a person confirms every term |
 | `modules/payments/` (+ `banking.py`), `modules/cards/` | Global payments, vendor cards | Simulated only: one currency per run, IBAN/SWIFT checks, mock card issuer |
 | `modules/agents/`, `app/mcp_server.py` | AI concierge, superagents, workflow-builder agent, MCP | Read + propose only; proposals are single-use and submitted by their person |
+| `infra/` + Dockerfiles | Demo server (Step 28): `docker-compose.prod.yml` (postgres, api, worker, web, caddy), `Caddyfile` (HTTPS), `deploy.sh` (one-command deploy) | Only Caddy is reachable (80/443); secrets in `.env.production` on the server; guide in `docs/DEPLOY_AWS.md` |
 | `modules/ordering/` | Orrfin POs built from approved needs (Step 42, ADR 0012) | Need-first orgs only; merges the same item across requests; PO chain = amount tiers minus the manager; builder can't approve; one ERP draft PO per Orrfin PO; simulated vendor email |
 | `modules/team/` | Team members, power seats, invitations (Step 41, ADR 0011) | Admin only; single-use hashed links; last-admin and own-role guards; deactivate, never delete |
 | `modules/spend/`, `modules/documents/`, `modules/app_studio/` | Spend insights, PDFs, App Studio | Deterministic cube per currency; PDFs from records; App Studio objects are data, not code |

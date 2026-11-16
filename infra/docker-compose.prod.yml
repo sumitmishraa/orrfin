@@ -1,0 +1,80 @@
+# The demo server (BUILD_PLAN §3 Hosting, §10, Step 28): one machine running everything in Docker.
+#   docker compose -f infra/docker-compose.prod.yml --env-file .env.production up -d
+# infra/deploy.sh runs this for you. Settings come from .env.production on the server (never committed).
+# Only Caddy publishes ports (80 and 443). Postgres, the API and the web app are reachable only
+# from each other, on Docker's private network.
+
+name: orrfin-prod
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orrfin
+      POSTGRES_USER: orrfin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orrfin -d orrfin"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    image: orrfin-api
+    restart: unless-stopped
+    env_file: ../.env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - storage:/srv/storage
+
+  worker:
+    image: orrfin-api
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    env_file: ../.env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - storage:/srv/storage
+
+  web:
+    build:
+      context: ../frontend
+      args:
+        API_INTERNAL_URL: http://api:8000
+    image: orrfin-web
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://api:8000
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?Set SITE_ADDRESS in .env.production}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  pgdata:
+  storage:
+  caddy_data:
+  caddy_config:

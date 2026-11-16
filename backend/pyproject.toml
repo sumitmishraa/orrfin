@@ -24,16 +24,18 @@ dependencies = [
     # ERP connectors (Steps 12-20): HTTP client, and XML parsing that blocks entity-expansion attacks (Tally).
     "httpx>=0.27,<1",
     "defusedxml>=0.7,<1",
+    # Encrypts saved ERP credentials and two-step sign-in secrets (Fernet, ADR 0006). Used directly,
+    # so listed here rather than relied on as another package's dependency.
+    "cryptography>=42",
+    # PO, RFQ, payment and audit PDFs (Step 37; Step 42 vendor PO) and reading contract PDFs (Step 33).
+    "reportlab>=4,<6",
+    "pypdf>=5,<7",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8,<9",
     "httpx>=0.27,<1",
-    # Generates synthetic invoice PDFs under seed/ (backend/scripts/make_sample_invoice.py).
-    "reportlab>=4,<6",
-    # Reads the evaluation PDFs back in tests (tests/contract/test_eval_invoices.py).
-    "pypdf>=5,<7",
 ]
 
 [build-system]

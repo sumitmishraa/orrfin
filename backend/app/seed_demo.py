@@ -14,6 +14,7 @@ Demo passwords are listed in the README; they are for the local, synthetic demo 
 Run:  backend\\.venv\\Scripts\\python -m app.seed_demo   (scripts/dev.ps1 runs it for you)
 """
 
+import os
 import secrets
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -38,7 +39,9 @@ from app.modules.connectors.service import ensure_connections
 from app.modules.workflows.budgets import quarter_of, today_ist
 
 ORG_NAME = "Orrfin Demo Co"
-DEMO_PASSWORD = "Orrfin@Demo2026"
+# A public demo server sets ORRFIN_DEMO_PASSWORD so the password printed in the README does not open it.
+# Only users created by this seed get it; existing users keep theirs.
+DEMO_PASSWORD = os.environ.get("ORRFIN_DEMO_PASSWORD") or "Orrfin@Demo2026"
 
 # (email, name, role, approval limit). The requester's manager is the approver (set below).
 USERS = [
@@ -163,8 +166,26 @@ def seed(db: Session) -> Org:
     ensure_connections(db, org.id)
 
     db.commit()
+    _first_erp_sync(db, org, users)
     _seed_needs(db, org, users, password_hash)
     return org
+
+
+def _first_erp_sync(db: Session, org: Org, users: dict[str, User]) -> None:
+    """A brand-new server (Step 28) has no vendors, POs or item codes until someone presses
+    "Sync from ERP". Pull once from the active (simulated) ERP so the demo works straight away, then
+    add the payment profiles that need those vendors. A laptop that has synced already is untouched."""
+    if db.scalar(select(func.count()).select_from(Vendor).where(Vendor.org_id == org.id)):
+        return
+    from app.adapters.registry import get_adapter  # local imports: keep the seed light for tests
+    from app.modules.connectors.service import active_connection
+    from app.modules.sync.service import pull_from_erp
+
+    connection = active_connection(db, org.id)
+    pull_from_erp(db, org.id, get_adapter(connection), connection.id)
+    db.commit()
+    _seed_payment_profiles(db, org, users)
+    db.commit()
 
 
 def _seed_needs(db: Session, org: Org, users: dict[str, User], password_hash: str) -> None:
