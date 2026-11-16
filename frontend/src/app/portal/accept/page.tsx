@@ -8,9 +8,16 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 
 import { ErrorNotice } from "@/components/page";
+import { AuthLayout } from "@/components/shell/auth-layout";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { portalApi } from "@/lib/portal-api";
+
+const SUPPLIER_POINTS = [
+  "Enter your company, tax and bank details once, and upload your documents.",
+  "Your customer's finance team reviews them; you see what is still missing.",
+  "Answer requests for quotation from the same place, sealed until the deadline.",
+];
 
 export default function AcceptInvitePage() {
   const [password, setPassword] = useState("");
@@ -39,10 +46,10 @@ export default function AcceptInvitePage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-4 py-10">
-      <div>
-        <p className="font-display text-2xl font-semibold text-heading">Orrfin supplier portal</p>
-        <p className="mt-1 text-sm text-muted-foreground">Choose a password to finish setting up your access.</p>
+    <AuthLayout headline="Get set up as a supplier." points={SUPPLIER_POINTS}>
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-heading">Supplier portal</h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">Choose a password to finish setting up your access.</p>
       </div>
       {done ? (
         <div className="space-y-3 rounded-xl border border-border bg-white p-5 shadow-raised">
@@ -58,9 +65,9 @@ export default function AcceptInvitePage() {
           <Field label="Type it again" htmlFor="again">
             <Input id="again" type="password" autoComplete="new-password" required value={again} onChange={(e) => setAgain(e.target.value)} />
           </Field>
-          <Button type="submit" disabled={busy}>Set password</Button>
+          <Button type="submit" size="lg" disabled={busy} className="h-10 w-full">Set password</Button>
         </form>
       )}
-    </main>
+    </AuthLayout>
   );
 }

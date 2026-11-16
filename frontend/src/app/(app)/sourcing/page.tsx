@@ -5,10 +5,11 @@
  * shown and fixed when the RFQ opens; the server refuses weights that do not add up to 100.
  */
 import { useState } from "react";
-import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
+import { ErrorNotice, PageHeader, Panel } from "@/components/page";
+import { DataTable } from "@/components/ui/data-table";
+import { StatusPill } from "@/components/ui/display";
 import { useMe } from "@/components/session";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -29,8 +30,6 @@ export default function SourcingPage() {
   const [form, setForm] = useState<{ title: string; category_id: string; currency: string; closes_at: string; lines: { description: string; qty: string }[]; weights: typeof WEIGHTS } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (rfqs.loading) return <Loading />;
-  if (rfqs.error) return <ErrorNotice message={rfqs.error} />;
   const canCreate = ["buyer", "finance", "admin"].includes(me.role);
   const total = form ? Object.values(form.weights).reduce((a, b) => a + b, 0) : 100;
 
@@ -49,7 +48,7 @@ export default function SourcingPage() {
     <div className="space-y-6">
       <PageHeader title="Sourcing" description="Ask approved suppliers for sealed quotes, compare them side by side and award one."
         actions={canCreate && !form ? <Button onClick={() => setForm({ title: "", category_id: "", currency: "INR", closes_at: "", lines: [{ description: "", qty: "1" }], weights: { ...WEIGHTS } })}><Plus aria-hidden /> New RFQ</Button> : undefined} />
-      <ErrorNotice message={error} />
+      <ErrorNotice message={error ?? rfqs.error} />
       {form ? (
         <Panel title="New request for quotation">
           <div className="grid gap-3 p-4 sm:grid-cols-2">
@@ -85,17 +84,24 @@ export default function SourcingPage() {
           </div>
         </Panel>
       ) : null}
-      {(rfqs.data ?? []).length === 0 ? <EmptyState>No RFQs yet.</EmptyState> : (
-        <div className={table.wrap}><table className={table.table}>
-          <thead><tr>{["RFQ", "Title", "Status", "Closes"].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr></thead>
-          <tbody>{rfqs.data?.map((r) => (
-            <tr key={r.id} className="border-t border-border">
-              <td className="px-3 py-2.5"><Link href={`/sourcing/${r.id}`} className="font-medium text-heading hover:underline">{r.number}</Link></td>
-              <td className="px-3 py-2.5">{r.title}</td><td className="px-3 py-2.5 capitalize">{r.status}</td>
-              <td className="px-3 py-2.5">{formatDateTime(r.closes_at)}</td>
-            </tr>))}</tbody>
-        </table></div>
-      )}
+      <DataTable rows={rfqs.data} loading={rfqs.loading} rowKey={(r) => r.id} noun={["RFQ", "RFQs"]}
+                 rowHref={(r) => `/sourcing/${r.id}`} empty="No RFQs yet." initialSort={{ key: "closes", dir: "desc" }}
+                 filters={[{ key: "open", label: "Open", test: (r) => r.status === "open" },
+                           { key: "draft", label: "Draft", test: (r) => r.status === "draft" },
+                           { key: "awarded", label: "Awarded", test: (r) => r.status === "awarded" }]}
+                 columns={[
+                   { key: "number", header: "RFQ", sortValue: (r) => r.number, searchValue: (r) => `${r.number} ${r.title}`,
+                     cell: (r) => (
+                       <span className="block leading-tight">
+                         <span className="font-medium text-primary">{r.number}</span>
+                         <span className="mt-0.5 block text-muted-foreground">{r.title}</span>
+                       </span>
+                     ) },
+                   { key: "status", header: "Status", sortValue: (r) => r.status,
+                     cell: (r) => <StatusPill tone={r.status === "open" ? "info" : r.status === "awarded" ? "success" : "muted"}><span className="capitalize">{r.status}</span></StatusPill> },
+                   { key: "currency", header: "Currency", cell: (r) => r.currency },
+                   { key: "closes", header: "Quotes close", sortValue: (r) => r.closes_at, cell: (r) => formatDateTime(r.closes_at) },
+                 ]} />
     </div>
   );
 }

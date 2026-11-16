@@ -7,9 +7,11 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import { Upload } from "lucide-react";
+import { CircleCheck, CircleHelp, TriangleAlert, Upload } from "lucide-react";
 
-import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
+import { EmptyState, ErrorNotice, Loading, PageHeader, Panel } from "@/components/page";
+import { DataTable } from "@/components/ui/data-table";
+import { StatusPill } from "@/components/ui/display";
 import { APP_HEADERS } from "@/lib/api";
 import { formatDate, formatINR } from "@/lib/format";
 import { useApi } from "@/lib/use-api";
@@ -20,6 +22,12 @@ interface Period { period: string; imported: boolean; itc_at_risk?: string; coun
 interface View { periods: string[]; current: Period | null; note: string }
 
 const STATUS: Record<string, string> = { matched: "Matched", amount_differs: "Amount differs", not_in_books: "Not in Orrfin" };
+
+function Result({ status }: { status: string }) {
+  if (status === "matched") return <StatusPill tone="success" icon={CircleCheck}>Matched</StatusPill>;
+  if (status === "amount_differs") return <StatusPill tone="warning" icon={TriangleAlert}>Amount differs</StatusPill>;
+  return <StatusPill tone="info" icon={CircleHelp}>{STATUS[status] ?? status}</StatusPill>;
+}
 
 export default function GstPage() {
   const [period, setPeriod] = useState<string | null>(null);
@@ -66,11 +74,12 @@ export default function GstPage() {
           <div className="flex flex-wrap items-center gap-2 text-sm">
             Period: {data?.periods.map((p) => (
               <button key={p} type="button" onClick={() => setPeriod(p)}
-                      className={`rounded-md px-2 py-1 ${p === current.period ? "bg-navy text-white" : "bg-ice text-heading"}`}>{p}</button>))}
+                      aria-pressed={p === current.period}
+                      className={`h-7 rounded-full border px-3 text-xs font-medium ${p === current.period ? "border-primary bg-primary text-white" : "border-border bg-white text-heading hover:bg-ice"}`}>{p}</button>))}
           </div>
           <div className="grid gap-3 sm:grid-cols-4">
             {tiles.map(([label, value, tone]) => (
-              <div key={label} className="rounded-xl border border-border bg-white px-4 py-3">
+              <div key={label} className="rounded-xl border border-border bg-white px-4 py-3 shadow-raised">
                 <p className="text-xs text-muted-foreground">{label}</p>
                 <p className={`text-xl font-semibold tabular-nums ${tone}`}>{value}</p>
               </div>
@@ -85,19 +94,20 @@ export default function GstPage() {
             ) : <p className="text-sm text-success">Every invoice of the period is in GSTR-2B.</p>}
             <p className="mt-2 text-xs text-muted-foreground">Paying one of these invoices needs the approver&apos;s reason (payment-risk hold).</p>
           </Panel>
-          <div className={table.wrap}><table className={table.table}>
-            <thead><tr>{["Supplier", "GSTIN", "Invoice", "Date", "Value", "GST", "Result"].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr></thead>
-            <tbody>{current.lines?.map((l) => (
-              <tr key={`${l.gstin}-${l.invoice_no}`}>
-                <td className={table.td}>{l.supplier}</td>
-                <td className={table.td}>{l.gstin}</td>
-                <td className={table.td}>{l.invoice_id ? <Link href={`/invoices/${l.invoice_id}`} className="text-primary hover:underline">{l.invoice_no}</Link> : l.invoice_no}</td>
-                <td className={table.td}>{formatDate(l.invoice_date)}</td>
-                <td className={`${table.td} ${table.num}`}>{formatINR(l.value)}</td>
-                <td className={`${table.td} ${table.num}`}>{formatINR(l.tax)}</td>
-                <td className={table.td}>{STATUS[l.status] ?? l.status}</td>
-              </tr>))}</tbody>
-          </table></div>
+          <DataTable rows={current.lines ?? []} rowKey={(l) => `${l.gstin}-${l.invoice_no}`} noun={["GSTR-2B line", "GSTR-2B lines"]}
+                     rowHref={(l) => (l.invoice_id ? `/invoices/${l.invoice_id}` : "/gst")}
+                     filters={[{ key: "matched", label: "Matched", test: (l) => l.status === "matched" },
+                               { key: "differs", label: "Amount differs", test: (l) => l.status === "amount_differs" },
+                               { key: "missing", label: "Not in Orrfin", test: (l) => l.status === "not_in_books" }]}
+                     columns={[
+                       { key: "supplier", header: "Supplier", sortValue: (l) => l.supplier, searchValue: (l) => `${l.supplier} ${l.gstin}`,
+                         cell: (l) => <span className="block leading-tight"><span className="font-medium">{l.supplier}</span><span className="mt-0.5 block font-mono text-xs text-muted-foreground">{l.gstin}</span></span> },
+                       { key: "invoice", header: "Invoice", searchValue: (l) => l.invoice_no, cell: (l) => <span className={l.invoice_id ? "font-medium text-primary" : undefined}>{l.invoice_no}</span> },
+                       { key: "date", header: "Date", sortValue: (l) => l.invoice_date, cell: (l) => formatDate(l.invoice_date) },
+                       { key: "value", header: "Value", align: "right", sortValue: (l) => Number(l.value), cell: (l) => formatINR(l.value) },
+                       { key: "tax", header: "GST", align: "right", sortValue: (l) => Number(l.tax), cell: (l) => formatINR(l.tax) },
+                       { key: "result", header: "Result", sortValue: (l) => l.status, cell: (l) => <Result status={l.status} /> },
+                     ]} />
         </div>
       )}
     </>

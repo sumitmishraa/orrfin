@@ -5,16 +5,14 @@
  * match outcome and ₹ at risk. Finance and admins upload; buyers and approvers can look.
  */
 import { useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Upload } from "lucide-react";
 
-import { InvoiceStatus } from "@/components/invoice-status";
-import { EmptyState, ErrorNotice, Loading, PageHeader, table } from "@/components/page";
+import { InvoiceTable } from "@/components/invoice-table";
+import { ErrorNotice, PageHeader } from "@/components/page";
 import { useMe } from "@/components/session";
 import { Button } from "@/components/ui/button";
 import { API_URL, APP_HEADERS } from "@/lib/api";
-import { formatDate, formatINR } from "@/lib/format";
 import type { InvoiceDetail, InvoiceSummary } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
 
@@ -66,45 +64,8 @@ export default function InvoicesPage() {
         actions={canUpload ? <UploadButton /> : undefined}
       />
       <ErrorNotice message={error} />
-      {loading ? (
-        <Loading />
-      ) : !data?.length ? (
-        <EmptyState>No invoices yet. {canUpload ? "Upload one of the PDFs in evals/extraction/ to try it." : ""}</EmptyState>
-      ) : (
-        <div className={table.wrap}>
-          <table className={table.table}>
-            <thead>
-              <tr>
-                <th className={table.th}>Invoice</th>
-                <th className={table.th}>Vendor</th>
-                <th className={table.th}>PO</th>
-                <th className={table.th}>Status</th>
-                <th className={`${table.th} ${table.num}`}>Total</th>
-                <th className={`${table.th} ${table.num}`}>At risk</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((inv) => (
-                <tr key={inv.id} className="hover:bg-ice-light">
-                  <td className={table.td}>
-                    <Link href={`/invoices/${inv.id}`} className="font-medium text-primary hover:underline">
-                      {inv.invoice_no ?? inv.filename}
-                    </Link>
-                    <p className="text-xs text-muted-foreground">{formatDate(inv.invoice_date ?? inv.created_at)}</p>
-                  </td>
-                  <td className={table.td}>{inv.vendor_name ?? "—"}</td>
-                  <td className={`${table.td} font-mono text-xs`}>{inv.po_reference ?? "—"}</td>
-                  <td className={table.td}><InvoiceStatus status={inv.outcome === "stale" ? "stale" : inv.status} /></td>
-                  <td className={`${table.td} ${table.num}`}>{formatINR(inv.total)}</td>
-                  <td className={`${table.td} ${table.num} ${inv.amount_at_risk && inv.amount_at_risk !== "0.00" ? "font-semibold text-error" : ""}`}>
-                    {inv.amount_at_risk && inv.amount_at_risk !== "0.00" ? formatINR(inv.amount_at_risk) : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <InvoiceTable rows={data} loading={loading}
+                    empty={canUpload ? "No invoices yet. Upload one of the PDFs in evals/extraction/ to try it." : "No invoices yet."} />
     </>
   );
 }

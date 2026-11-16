@@ -45,6 +45,32 @@ def purchase_order(po_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Respon
         source={"po": str(po.id), "erp_modified": po.erp_modified.isoformat(), "rows": rows}))
 
 
+@router.get("/order-po/{po_id}")
+def order_po(po_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Response:
+    """The purchase order procurement sends to the vendor (Step 42): Orrfin's PO, with the ERP number once
+    the ERP has confirmed its draft."""
+    from app.modules.ordering import service as ordering  # local import: ordering imports procurement
+
+    po = ordering.load_po(db, user, po_id)
+    detail = ordering.detail(db, user, po)
+    erp = (detail["erp_sync"] or {}).get("erp_doc_name")
+    rows = [[str(l["line_no"]), l["item_code"], l["description"], f"{l['qty'].normalize():f} {l['unit'] or ''}".strip(),
+             f"{l['rate']:,.2f}", f"{l['amount']:,.2f}"] for l in detail["lines"]]
+    approvers = ", ".join(f"{s['approver_name']} ({s['required_role']})" for s in detail["steps"]
+                          if s["decision"] == "approve") or "Within procurement's limit: no further approval needed"
+    number = ordering.po_number(po.number)
+    return _pdf(f"{number}.pdf", build(
+        f"Purchase order {number}" + (f" / {erp}" if erp else ""), detail["reference"],
+        [("Vendor", detail["vendor_name"]), ("Tax number", detail["vendor_gstin"] or "–"),
+         ("Deliver by", str(detail["needed_by"] or "To be confirmed")), ("Currency", detail["currency"]),
+         ("Total before GST", f"{detail['amount']:,.2f}"), ("Raised by", detail["completed_by_name"] or "–"),
+         ("Approved by", approvers), ("Status", detail["status"])],
+        ["#", "Item code", "Description", "Qty", "Rate", "Amount"], rows,
+        notice=("Please quote the PO number on your invoice. GST is charged as applicable on the invoice. "
+                "Demo document on synthetic data."),
+        source={"order_po": str(po.id), "status": po.status, "erp": erp, "rows": rows}))
+
+
 @router.get("/rfq/{rfq_id}")
 def rfq(rfq_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Response:
     record = sourcing.load_rfq(db, user, rfq_id)

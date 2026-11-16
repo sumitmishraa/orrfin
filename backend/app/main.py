@@ -34,7 +34,10 @@ from app.modules.notifications.router import router as notifications_router
 from app.mcp_server import router as mcp_router
 from app.modules.agents.router import router as agents_router
 from app.modules.app_studio.router import router as app_studio_router
+from app.modules.team.router import accept_router as team_accept_router
+from app.modules.team.router import router as team_router
 from app.modules.documents.router import router as documents_router
+from app.modules.ordering.router import router as ordering_router
 from app.modules.spend.router import router as spend_router
 from app.modules.cards.router import router as cards_router
 from app.modules.contracts.router import router as contracts_router
@@ -108,7 +111,10 @@ def create_app() -> FastAPI:
     app.include_router(mcp_router)
     app.include_router(spend_router)
     app.include_router(documents_router)
+    app.include_router(ordering_router)
     app.include_router(app_studio_router)
+    app.include_router(team_router)
+    app.include_router(team_accept_router)
     return app
 
 

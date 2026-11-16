@@ -10,12 +10,21 @@
  */
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
+import { ShieldCheck } from "lucide-react";
+
 import { ErrorNotice, Loading, Panel } from "@/components/page";
+import { AuthLayout } from "@/components/shell/auth-layout";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { PortalAuthError, portalApi, portalUpload } from "@/lib/portal-api";
 
 import { PortalRfqs } from "./rfqs";
+
+const SUPPLIER_POINTS = [
+  "Enter your company, tax and bank details once, and upload your documents.",
+  "Your customer's finance team reviews them; you see what is still missing.",
+  "Answer requests for quotation from the same place, sealed until the deadline.",
+];
 
 interface PortalView {
   contact_name: string; legal_name: string; country: "IN" | "AE"; status: string; tax_id: string | null; pan: string | null;
@@ -57,7 +66,7 @@ function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   }
 
   return (
-    <form onSubmit={submit} className="mx-auto max-w-md space-y-4 rounded-xl border border-border bg-white p-5 shadow-raised">
+    <form onSubmit={submit} className="mt-6 space-y-4">
       <ErrorNotice message={error} />
       <Field label="Email" htmlFor="portal-email">
         <Input id="portal-email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -65,7 +74,7 @@ function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
       <Field label="Password" htmlFor="portal-password">
         <Input id="portal-password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>
-      <Button type="submit" disabled={busy}>Sign in</Button>
+      <Button type="submit" size="lg" disabled={busy} className="h-10 w-full">Sign in</Button>
     </form>
   );
 }
@@ -135,20 +144,45 @@ export default function SupplierPortalPage() {
     setSignedOut(true);
   });
 
+  if (signedOut) {
+    return (
+      <AuthLayout headline="Get set up as a supplier." points={SUPPLIER_POINTS}>
+        <h1 className="text-2xl font-semibold tracking-tight text-heading">Supplier sign in</h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">Use the email your customer invited. No account yet? Open the invitation link they sent.</p>
+        <div className="mt-4"><ErrorNotice message={error} /></div>
+        <SignIn onSignedIn={load} />
+      </AuthLayout>
+    );
+  }
+
   return (
-    <main className="mx-auto max-w-3xl space-y-6 px-4 py-10">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="font-display text-2xl font-semibold text-heading">Orrfin supplier portal</p>
-          {view ? <p className="mt-1 text-sm text-muted-foreground">{view.legal_name} · signed in as {view.contact_name}</p> : null}
+    <div className="min-h-screen flex-1 bg-ice-light">
+      <header className="bg-navy text-white">
+        <div className="mx-auto flex h-14 max-w-3xl items-center justify-between gap-3 px-4">
+          <span className="flex items-center gap-2.5">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-blue-dark ring-1 ring-white/10">
+              <ShieldCheck className="size-[18px] text-cyan" aria-hidden />
+            </span>
+            <span className="font-semibold tracking-tight">Orrfin</span>
+            <span className="hidden text-sm text-white/55 sm:inline">· Supplier portal</span>
+          </span>
+          {view ? (
+            <span className="flex items-center gap-3">
+              <span className="hidden text-right text-xs leading-tight text-white/70 sm:block">
+                <span className="block font-medium text-white">{view.legal_name}</span>{view.contact_name}
+              </span>
+              <Button variant="outline" size="sm" onClick={signOut} disabled={busy}
+                      className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white">Sign out</Button>
+            </span>
+          ) : null}
         </div>
-        {view ? <Button variant="outline" onClick={signOut} disabled={busy}>Sign out</Button> : null}
       </header>
+    <main className="mx-auto max-w-3xl space-y-6 px-4 py-8">
       <ErrorNotice message={error} />
 
-      {signedOut ? <SignIn onSignedIn={load} /> : !view ? <Loading /> : (
+      {!view ? <Loading /> : (
         <>
-          <div role="status" className="rounded-xl border border-border bg-ice p-4 text-sm">
+          <div role="status" className="rounded-xl border border-border bg-white p-4 text-sm shadow-raised">
             <p className="font-medium text-heading">{STATUS_TEXT[view.status] ?? view.status}</p>
             {view.review_reason ? <p className="mt-1">Reviewer&apos;s note: {view.review_reason}</p> : null}
             {view.editable && view.to_do.length > 0 ? (
@@ -157,7 +191,7 @@ export default function SupplierPortalPage() {
           </div>
 
           <Panel title="1. Company details">
-            <div className="grid gap-3 p-4 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               <Field label={india ? "GSTIN" : "TRN"} htmlFor="tax-id">
                 <Input id="tax-id" disabled={!view.editable} value={profile.tax_id} onChange={(e) => setProfile({ ...profile, tax_id: e.target.value.toUpperCase() })} />
               </Field>
@@ -181,7 +215,7 @@ export default function SupplierPortalPage() {
           </Panel>
 
           <Panel title="2. Bank details">
-            <div className="grid gap-3 p-4 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               <p className="text-sm text-muted-foreground sm:col-span-2">
                 {view.bank_last4 ? `On file: account ending ${view.bank_last4}. ` : "No bank details yet. "}
                 The full number is stored encrypted and is never shown again. Changing it later sends your details back for review.
@@ -202,7 +236,7 @@ export default function SupplierPortalPage() {
           </Panel>
 
           <Panel title="3. Documents">
-            <div className="space-y-4 p-4">
+            <div className="space-y-4">
               {view.documents.length > 0 ? (
                 <ul className="space-y-1 text-sm">
                   {view.documents.map((d) => (
@@ -239,5 +273,6 @@ export default function SupplierPortalPage() {
         </>
       )}
     </main>
+    </div>
   );
 }

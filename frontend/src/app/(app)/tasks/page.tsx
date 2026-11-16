@@ -14,7 +14,8 @@ import { formatDateTime } from "@/lib/format";
 import { useApi } from "@/lib/use-api";
 
 export interface Task {
-  kind: "approval" | "buyer" | "returned" | "exception_task" | "answer" | "invoice";
+  kind: "approval" | "buyer" | "returned" | "exception_task" | "answer" | "invoice"
+    | "order" | "po_approval" | "po_send"; // Step 42 (need-first)
   id: string;
   title: string;
   detail: string;
@@ -33,6 +34,9 @@ const KIND_LABELS: Record<Task["kind"], string> = {
   exception_task: "Answer a question",
   answer: "Answer received",
   invoice: "Decide on an invoice",
+  order: "Order approved needs",
+  po_approval: "Approve a PO",
+  po_send: "Send a PO",
 };
 
 export default function TasksPage() {

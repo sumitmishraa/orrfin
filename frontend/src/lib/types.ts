@@ -12,6 +12,12 @@ export interface Me {
   full_name: string;
   role: Role;
   approval_limit: string;
+  mfa_enabled: boolean;
+  department: string | null;
+  org_name: string | null;
+  plan_name: string | null;
+  /** Step 42: "need_first" = employee states the need, manager approves, procurement builds the PO. */
+  intake_flow?: "buyer_first" | "need_first";
 }
 
 export interface Category {
@@ -90,6 +96,9 @@ export interface RequestLine {
   est_rate: string;
   amount: string;
   hsn: string | null;
+  unit?: string | null;
+  /** Step 42: the Orrfin PO this line is on. */
+  placement?: { po_id: string; po_number: string; po_status: OrderPoStatus } | null;
 }
 
 export interface ApprovalStep {
@@ -144,6 +153,112 @@ export interface RequestDetail extends RequestSummary {
   allowed: AllowedActions;
   po_sync: ErpSync | null; // Step 15: the draft PO in the ERP
   po_sync_note: string | null; // why an approved request was not sent to the ERP
+  // Step 42 (ADR 0012)
+  intake_flow?: "buyer_first" | "need_first";
+  source_channel?: "form" | "whatsapp" | "email";
+  source_message?: string | null;
+  entered_by_name?: string | null;
+}
+
+// --- Step 42: Orrfin POs built by procurement from approved needs ------------------------------
+
+export type OrderPoStatus = "draft" | "in_approval" | "returned" | "approved" | "rejected" | "sent" | "cancelled";
+
+export interface ApprovedNeed {
+  request_line_id: string;
+  request_id: string;
+  request_number: number;
+  request_title: string;
+  description: string;
+  qty: string;
+  unit: string | null;
+  est_rate: string;
+  requester_name: string;
+  category_name: string;
+  cost_center: string;
+  needed_by: string | null;
+  approved_at: string;
+  buyer_name: string | null;
+  source_channel: "form" | "whatsapp" | "email";
+}
+
+export interface CatalogItem {
+  item_code: string;
+  description: string;
+  unit: string | null;
+  hsn: string | null;
+  last_rate: string;
+  last_date: string | null;
+  last_vendor: string | null;
+}
+
+export interface OrderPoSummary {
+  id: string;
+  number: number;
+  status: OrderPoStatus;
+  amount: string;
+  currency: string;
+  vendor_name: string;
+  created_by_name: string;
+  needed_by: string | null;
+  requests: string[];
+  erp_doc_name: string | null;
+  waiting_on: string | null;
+  created_at: string;
+  sent_at: string | null;
+}
+
+export interface OrderPoLine {
+  id: string;
+  line_no: number;
+  item_code: string;
+  description: string;
+  unit: string | null;
+  qty: string;
+  rate: string;
+  amount: string;
+  hsn: string | null;
+  sources: { request_id: string; request_number: number; requester_name: string | null; qty: string; active: boolean }[];
+}
+
+export interface OrderPoDetail {
+  id: string;
+  number: number;
+  status: OrderPoStatus;
+  amount: string;
+  currency: string;
+  vendor_id: string;
+  vendor_name: string;
+  vendor_gstin: string | null;
+  needed_by: string | null;
+  note_to_vendor: string;
+  created_at: string;
+  created_by_name: string | null;
+  completed_by_name: string | null;
+  sent_at: string | null;
+  sent_by_name: string | null;
+  approval_round: number;
+  reference: string;
+  lines: OrderPoLine[];
+  steps: { step: number; required_role: string; approver_id: string | null; approver_name: string | null;
+           decision: "approve" | "reject" | "return" | null; reason: string | null; decided_at: string | null }[];
+  chain_preview: string[] | null;
+  allowed: { edit: boolean; submit: boolean; cancel: boolean; send: boolean; decide_step: number | null;
+             can_approve: boolean; approve_blocked_reason: string | null };
+  erp_sync: ErpSync | null;
+  send_blocked_reason: string | null;
+  send_notes: string[];
+  messages: { id: string; channel: "email" | "whatsapp"; to: string; subject: string; body: string;
+              attachment_name: string | null; at: string; by: string | null }[];
+}
+
+export interface VendorMessagePreview {
+  to: string;
+  subject: string;
+  body: string;
+  whatsapp: string;
+  attachment_name: string;
+  reference: string;
 }
 
 export interface SyncCounts {
@@ -411,4 +526,60 @@ export interface ErpSync {
   doc_type: "purchase_invoice" | "purchase_order";
   /** File-based ERPs (BUSY): where to download the import file a person loads into the ERP. */
   import_file_url: string | null;
+}
+
+/* Step 41: team members, power seats and invitations (backend app/modules/team). */
+
+export interface TeamPlan {
+  plan_name: string;
+  seat_limit: number;
+  seats_used: number;
+  requesters: number;
+  pending_invites: number;
+  power_roles: Role[];
+}
+
+export interface TeamMember {
+  id: string;
+  email: string;
+  full_name: string;
+  role: Role;
+  department: string | null;
+  approval_limit: string;
+  manager_id: string | null;
+  manager_name: string | null;
+  invited_by_name: string | null;
+  status: "active" | "deactivated";
+  mfa_enabled: boolean;
+  uses_seat: boolean;
+  last_seen_at: string | null;
+  joined_at: string;
+}
+
+export interface TeamMemberDetail extends TeamMember {
+  open_work: { open_questions: number; named_approvals: number };
+  activity: { at: string; entity_type: string; entity_id: string; action: string; actor_name: string | null }[];
+}
+
+export interface TeamInvite {
+  id: string;
+  email: string;
+  role: Role;
+  department: string | null;
+  approval_limit: string;
+  manager_name: string | null;
+  invited_by_name: string | null;
+  status: "pending" | "expired" | "revoked" | "accepted";
+  uses_seat: boolean;
+  sent_at: string;
+  expires_at: string;
+  invite_link?: string;
+}
+
+export interface InviteResult {
+  email: string;
+  status: "invited" | "exists" | "already_invited" | "invalid";
+  message?: string;
+  invite_id?: string;
+  invite_link?: string;
 }

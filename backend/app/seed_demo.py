@@ -2,6 +2,11 @@
 (PROMPTS Steps 3 and 12) and the Step 22 workflow data: a "Software & SaaS" category with an
 IT security review step, and this quarter's budgets per cost centre.
 
+Step 42 (ADR 0012): the demo org follows the need-first order: the employee states a need, the General
+Manager approves it, procurement (Arjun) builds one PO per vendor from the approved needs, Finance approves
+POs above ₹50,000, and the PO is sent to the vendor (simulated). A second employee (Sameer) and three
+needs show it straight away: two approved and waiting for procurement, one waiting for the manager.
+
 Safe to run repeatedly: existing rows are found by name/email and left as they are,
 so demo requests created in the app survive a re-run. All people and data are fictional.
 Demo passwords are listed in the README; they are for the local, synthetic demo only.
@@ -9,6 +14,8 @@ Demo passwords are listed in the README; they are for the local, synthetic demo 
 Run:  backend\\.venv\\Scripts\\python -m app.seed_demo   (scripts/dev.ps1 runs it for you)
 """
 
+import secrets
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -16,7 +23,17 @@ from sqlalchemy.orm import Session
 
 from app.auth.passwords import hash_password
 from app.db import SessionLocal
-from app.models import ApprovalPolicy, Budget, Category, Org, User, Vendor, VendorPaymentProfile
+from app.models import (
+    ApprovalPolicy,
+    Budget,
+    Category,
+    Org,
+    PurchaseRequest,
+    TeamInvite,
+    User,
+    Vendor,
+    VendorPaymentProfile,
+)
 from app.modules.connectors.service import ensure_connections
 from app.modules.workflows.budgets import quarter_of, today_ist
 
@@ -31,6 +48,24 @@ USERS = [
     ("vikram.finance@demo.orrfin.ai", "Vikram Rao", "finance", "5000000"),
     ("anita.admin@demo.orrfin.ai", "Anita Desai", "admin", "10000000"),
 ]
+# Step 41: departments on the Team page, one person who left, and one invitation still waiting.
+DEPARTMENTS = {"requester": "Operations", "buyer": "Procurement", "approver": "General Management",
+               "finance": "Finance", "admin": "Finance"}
+# Step 42: a second employee who reports to the General Manager (Neha).
+SECOND_REQUESTER = ("sameer.requester@demo.orrfin.ai", "Sameer Joshi", "requester", "Operations")
+# (who, title, [(description, qty, unit)], channel, message, approved by the manager)
+NEEDS = [
+    ("requester", "A4 paper for the Pune office", [("A4 copier paper, 75 gsm, box of 5 reams", "20", "box")],
+     "whatsapp", "Hi Neha, we need 20 boxes of A4 paper for the Pune office in the next two weeks. Thanks, Riya",
+     True),
+    ("sameer", "Stationery for the operations desk",
+     [("A4 copier paper, 75 gsm, box of 5 reams", "10", "box"), ("Box file, foolscap", "5", "pcs")],
+     "email", "Dear Neha,\nPlease arrange 10 boxes of A4 paper and 5 box files for the operations desk.\n"
+              "Regards,\nSameer", True),
+    ("sameer", "Blue pens for the new joiners", [("Blue ball pens, box of 50", "4", "box")], "form", None, False),
+]
+FORMER_MEMBER = ("rahul.former@demo.orrfin.ai", "Rahul Verma", "buyer", "Procurement")
+PENDING_INVITE = ("pooja.newhire@demo.orrfin.ai", "approver", "Marketing")
 CATEGORIES = ["IT hardware", "Office supplies", "Professional services"]
 # Step 22: a named reviewer outside the amount tiers (Zip's "vendor touches data → security review").
 SECURITY_LEAD = ("kabir.security@demo.orrfin.ai", "Kabir Khan", "approver", "0")
@@ -53,6 +88,25 @@ POLICIES = [
     (Decimal("50000.01"), Decimal("500000.00"), ["manager", "finance"]),
     (Decimal("500000.01"), None, ["manager", "finance", "admin"]),
 ]
+
+
+def _seed_team(db: Session, org: Org, users: dict[str, User], password_hash: str, security: User) -> None:
+    for role, user in users.items():
+        if user.department is None or (role == "approver" and user.department == "Operations"):
+            user.department = DEPARTMENTS[role]  # Step 42: Neha is the General Manager
+    if security.department is None:
+        security.department = "IT"
+    email, name, role, department = FORMER_MEMBER
+    if db.scalar(select(User).where(func.lower(User.email) == email)) is None:
+        db.add(User(org_id=org.id, email=email, full_name=name, role=role, department=department, active=False,
+                    password_hash=password_hash, invited_by_id=users["admin"].id))
+    email, role, department = PENDING_INVITE
+    if db.scalar(select(TeamInvite).where(TeamInvite.email == email)) is None:
+        # The raw token is thrown away: the admin can "Resend" from the Team page to get a working link.
+        db.add(TeamInvite(org_id=org.id, email=email, role=role, department=department,
+                          approval_limit=Decimal("100000"), manager_id=users["finance"].id,
+                          token_hash=secrets.token_hex(32), invited_by_id=users["admin"].id,
+                          expires_at=datetime.now(UTC) + timedelta(days=7)))
 
 
 def seed(db: Session) -> Org:
@@ -98,6 +152,8 @@ def seed(db: Session) -> Org:
             db.add(Budget(org_id=org.id, cost_center=cost_center, fiscal_year=fy, quarter=quarter, amount=amount))
 
     _seed_payment_profiles(db, org, users)
+    _seed_team(db, org, users, password_hash, security)
+    org.intake_flow = "need_first"  # Step 42: need → General Manager → procurement → PO → vendor
 
     if db.scalar(select(func.count()).select_from(ApprovalPolicy).where(ApprovalPolicy.org_id == org.id)) == 0:
         for low, high, steps in POLICIES:
@@ -107,7 +163,40 @@ def seed(db: Session) -> Org:
     ensure_connections(db, org.id)
 
     db.commit()
+    _seed_needs(db, org, users, password_hash)
     return org
+
+
+def _seed_needs(db: Session, org: Org, users: dict[str, User], password_hash: str) -> None:
+    """Step 42: a second employee and three needs, created through the same service calls the app uses,
+    so each has its normal audit trail. Skipped once a need with the same title exists."""
+    from app.modules.procurement import service as procurement  # local import: keeps the seed light for tests
+
+    email, name, role, department = SECOND_REQUESTER
+    sameer = db.scalar(select(User).where(func.lower(User.email) == email))
+    if sameer is None:
+        sameer = User(org_id=org.id, email=email, full_name=name, role=role, department=department,
+                      manager_id=users["approver"].id, password_hash=password_hash, invited_by_id=users["admin"].id)
+        db.add(sameer)
+        db.commit()
+    people = {"requester": users["requester"], "sameer": sameer}
+    office = db.scalar(select(Category).where(Category.org_id == org.id, Category.name == "Office supplies"))
+    needed_by = today_ist() + timedelta(days=14)
+    for who, title, lines, channel, message, approve in NEEDS:
+        person = people[who]
+        if db.scalar(select(PurchaseRequest.id).where(PurchaseRequest.org_id == org.id,
+                                                      PurchaseRequest.requested_by == person.id,
+                                                      PurchaseRequest.title == title)):
+            continue
+        request = procurement.create_request(
+            db, person, category_id=office.id, title=title, justification="Monthly office requirement.",
+            cost_center="ADMIN", needed_by=needed_by, source_channel=channel, source_message=message,
+            lines=[procurement.LineInput(description=d, qty=Decimal(q), est_rate=Decimal("0"), unit=u)
+                   for d, q, u in lines])
+        procurement.submit_request(db, person, request.id)
+        if approve:
+            procurement.decide(db, users["approver"], request.id, 1, "approve", None)
+        db.commit()
 
 
 def _seed_payment_profiles(db: Session, org: Org, users: dict[str, User]) -> None:
@@ -131,7 +220,7 @@ def _seed_payment_profiles(db: Session, org: Org, users: dict[str, User]) -> Non
 def main() -> None:
     with SessionLocal() as db:
         org = seed(db)
-    print(f"Seeded '{org.name}' with {len(USERS) + 1} users, {len(CATEGORIES) + 1} categories, "
+    print(f"Seeded '{org.name}' with {len(USERS) + 2} users, {len(CATEGORIES) + 1} categories, "
           f"{len(POLICIES)} approval tiers and {len(BUDGETS)} budgets for this quarter.")
 
 

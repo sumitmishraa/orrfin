@@ -46,4 +46,23 @@
    */
   --orffin-shadow-raised: 0 1px 2px rgb(9 32 61 / 6%), 0 4px 12px rgb(9 32 61 / 5%);
   --orffin-shadow-overlay: 0 12px 32px rgb(5 15 27 / 22%), 0 2px 6px rgb(5 15 27 / 12%);
+
+  /*
+   * Step 41: avatar initials. Eight muted pairs (background, text), each at least 4.5:1, picked by a
+   * hash of the person's name so the same person always gets the same colour. Never used for status.
+   */
+  --orffin-avatar-1-bg: #dbeafe; --orffin-avatar-1-fg: #1e3a8a;
+  --orffin-avatar-2-bg: #e0e7ff; --orffin-avatar-2-fg: #3730a3;
+  --orffin-avatar-3-bg: #ccfbf1; --orffin-avatar-3-fg: #115e59;
+  --orffin-avatar-4-bg: #fef3c7; --orffin-avatar-4-fg: #854d0e;
+  --orffin-avatar-5-bg: #fce7f3; --orffin-avatar-5-fg: #9d174d;
+  --orffin-avatar-6-bg: #ede9fe; --orffin-avatar-6-fg: #5b21b6;
+  --orffin-avatar-7-bg: #dcfce7; --orffin-avatar-7-fg: #166534;
+  --orffin-avatar-8-bg: #ffedd5; --orffin-avatar-8-fg: #9a3412;
+
+  /* Step 41: the navy sidebar's text and hover levels, so every row uses the same three steps. */
+  --orffin-sidebar-text: rgb(255 255 255 / 72%);
+  --orffin-sidebar-label: rgb(255 255 255 / 45%);
+  --orffin-sidebar-hover: rgb(255 255 255 / 6%);
+  --orffin-sidebar-active: rgb(133 201 247 / 12%);
 }

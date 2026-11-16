@@ -6,11 +6,13 @@
  * produces a bank file and a mock bank marks it paid; no real money moves.
  */
 import { useState } from "react";
-import Link from "next/link";
+
 import { useRouter } from "next/navigation";
 import { BadgeCheck, Plus, ShieldAlert } from "lucide-react";
 
-import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
+import { ErrorNotice, Loading, PageHeader, Panel } from "@/components/page";
+import { DataTable } from "@/components/ui/data-table";
+import { PersonCell, StatusPill, type Tone } from "@/components/ui/display";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { post, put } from "@/lib/api";
@@ -26,6 +28,10 @@ interface ProfileRow {
                     verified_by: string | null; can_verify: boolean };
 }
 
+
+const RUN_TONE: Record<string, Tone> = {
+  draft: "muted", submitted: "warning", approved: "info", sent: "info", settled: "success", partly_failed: "danger", cancelled: "muted",
+};
 
 export default function PaymentsPage() {
   const router = useRouter();
@@ -50,38 +56,33 @@ export default function PaymentsPage() {
                   actions={<Button onClick={() => void newRun()}><Plus aria-hidden /> New payment run</Button>} />
       <ErrorNotice message={error ?? runs.error} />
       <div className="flex flex-col gap-6">
-        <Panel title="Payment runs">
-          {runs.loading ? <Loading /> : !runs.data?.length ? <EmptyState>No payment runs yet.</EmptyState> : (
-            <div className={table.wrap}><table className={table.table}>
-              <thead><tr>{["Run", "Status", "Net to pay", "TDS", "Prepared by", "Approved by", "Created"].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr></thead>
-              <tbody>{runs.data.map((r) => (
-                <tr key={r.id} className="hover:bg-ice-light">
-                  <td className={table.td}><Link href={`/payments/${r.id}`} className="font-medium text-primary hover:underline">{r.label}</Link></td>
-                  <td className={table.td}>{RUN_STATUS[r.status] ?? r.status}</td>
-                  <td className={`${table.td} ${table.num}`}>{formatINR(r.total_net)}</td>
-                  <td className={`${table.td} ${table.num}`}>{formatINR(r.total_tds)}</td>
-                  <td className={table.td}>{r.prepared_by}</td>
-                  <td className={table.td}>{r.approved_by ?? "—"}</td>
-                  <td className={table.td}>{formatDateTime(r.created_at)}</td>
-                </tr>))}</tbody>
-            </table></div>
-          )}
-        </Panel>
-        <Panel title="Approved invoices with money left to pay">
-          {due.loading ? <Loading /> : !due.data?.length ? <EmptyState>Nothing is due.</EmptyState> : (
-            <div className={table.wrap}><table className={table.table}>
-              <thead><tr>{["Invoice", "Vendor", "Date", "Total", "Left to pay"].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr></thead>
-              <tbody>{due.data.map((d) => (
-                <tr key={d.invoice_id}>
-                  <td className={table.td}><Link href={`/invoices/${d.invoice_id}`} className="text-primary hover:underline">{d.invoice_no}</Link></td>
-                  <td className={table.td}>{d.vendor}</td>
-                  <td className={table.td}>{formatDate(d.invoice_date)}</td>
-                  <td className={`${table.td} ${table.num}`}>{formatINR(d.total)}</td>
-                  <td className={`${table.td} ${table.num} font-medium`}>{formatINR(d.left_to_pay)}</td>
-                </tr>))}</tbody>
-            </table></div>
-          )}
-        </Panel>
+        <section className="space-y-3">
+          <h2 className="text-[15px] font-semibold text-heading">Payment runs</h2>
+          <DataTable rows={runs.data} loading={runs.loading} rowKey={(r) => r.id} noun={["run", "runs"]}
+                     rowHref={(r) => `/payments/${r.id}`} empty="No payment runs yet." initialSort={{ key: "created", dir: "desc" }}
+                     columns={[
+                       { key: "run", header: "Run", sortValue: (r) => r.label, searchValue: (r) => r.label, cell: (r) => <span className="font-medium text-primary">{r.label}</span> },
+                       { key: "status", header: "Status", sortValue: (r) => r.status,
+                         cell: (r) => <StatusPill tone={RUN_TONE[r.status] ?? "neutral"}>{RUN_STATUS[r.status] ?? r.status}</StatusPill> },
+                       { key: "net", header: "Net to pay", align: "right", sortValue: (r) => Number(r.total_net), cell: (r) => <span className="font-medium">{formatINR(r.total_net)}</span> },
+                       { key: "tds", header: "TDS", align: "right", sortValue: (r) => Number(r.total_tds), cell: (r) => formatINR(r.total_tds) },
+                       { key: "prepared", header: "Prepared by", searchValue: (r) => r.prepared_by, cell: (r) => <PersonCell name={r.prepared_by} size="xs" /> },
+                       { key: "approved", header: "Approved by", cell: (r) => (r.approved_by ? <PersonCell name={r.approved_by} size="xs" /> : <span className="text-muted-foreground">—</span>) },
+                       { key: "created", header: "Created", sortValue: (r) => r.created_at, cell: (r) => formatDateTime(r.created_at) },
+                     ]} />
+        </section>
+        <section className="space-y-3">
+          <h2 className="text-[15px] font-semibold text-heading">Approved invoices with money left to pay</h2>
+          <DataTable rows={due.data} loading={due.loading} rowKey={(d) => d.invoice_id} noun={["invoice", "invoices"]}
+                     rowHref={(d) => `/invoices/${d.invoice_id}`} empty="Nothing is due." initialSort={{ key: "date", dir: "asc" }}
+                     columns={[
+                       { key: "invoice", header: "Invoice", sortValue: (d) => d.invoice_no, searchValue: (d) => `${d.invoice_no} ${d.vendor}`, cell: (d) => <span className="font-medium text-primary">{d.invoice_no}</span> },
+                       { key: "vendor", header: "Vendor", sortValue: (d) => d.vendor, cell: (d) => d.vendor },
+                       { key: "date", header: "Date", sortValue: (d) => d.invoice_date, cell: (d) => formatDate(d.invoice_date) },
+                       { key: "total", header: "Total", align: "right", sortValue: (d) => Number(d.total), cell: (d) => formatINR(d.total) },
+                       { key: "left", header: "Left to pay", align: "right", sortValue: (d) => Number(d.left_to_pay), cell: (d) => <span className="font-semibold">{formatINR(d.left_to_pay)}</span> },
+                     ]} />
+        </section>
         <VendorProfiles />
       </div>
     </>

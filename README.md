@@ -96,6 +96,32 @@ Database tests use a separate `orrfin_test` database (your demo data is never to
 Postgres is up (start it with `dev.ps1`) and are skipped otherwise. CI runs all tests against a real
 Postgres on every push.
 
+## Team and invitations (Step 41)
+
+1. Sign in as Anita (admin) → **Settings → Team & roles** (or Ctrl K → "Invite teammates").
+2. **Invite teammates**: paste emails, pick a role (requesters are free; others use one of 10 power seats), send.
+3. Copy a link (or ⋯ → **Resend with a new link** on Pending invites) and open it in a private window.
+   Locally there is no mail server: the "email" is a line in the API log.
+4. On `/join`, set a name and password. Finance and admin invitees are sent to switch on two-step sign-in.
+5. Back as Anita: click the new member to change role, limit, manager, or **Deactivate** (signs them out at once).
+   You can't change your own role or limit, and the last admin can't be removed.
+
+## Intake to procure, need first (Step 42)
+
+The demo company works the way most Indian companies buy: the employee asks, the General Manager approves the
+need, procurement chooses the vendor and price and sends one PO per vendor. Passwords are in "Demo logins".
+
+1. **Riya (employee)**: *+* → **Paste a WhatsApp / email message** → paste
+   `Hi Neha, we need 20 boxes of A4 paper for the Pune office. Thanks, Riya` → **Read the message** →
+   choose *Office supplies* → **Send to my manager**. Status: *Waiting for manager*.
+2. **Neha (General Manager)**: **My tasks** → the request → **Approve the need**. Status: *With procurement*.
+3. **Arjun (procurement)**: **Procure → Orders → Approved needs**: tick the A4 lines (Riya's and Sameer's
+   seeded ones) → **Create PO** → vendor *Shreeji*, item *STAT-A4-75* (last price filled in) → **Create draft PO**
+   → **Submit**. Above ₹50,000 it waits for Finance; at or below, it is approved at once.
+4. **Vikram (finance)**: **My tasks** → the PO → **Approve**. Arjun cannot approve his own PO (try it: 403).
+5. **Arjun**: wait a few seconds for *ERP draft created · PUR-ORD-…*, then **Send to vendor** → check the email,
+   the PDF and the WhatsApp preview → **Send email** (simulated). Riya's request now shows *Ordered*.
+
 ## Rules
 
 No secrets in the repo (only `.env.example` is committed). No payments, GST filing or ledger posting.

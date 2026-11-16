@@ -11,6 +11,8 @@
 import { useState } from "react";
 import { Plus, Star } from "lucide-react";
 
+import { DataTable } from "@/components/ui/data-table";
+import { StatusPill } from "@/components/ui/display";
 import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
 import { useMe } from "@/components/session";
 import { Button } from "@/components/ui/button";
@@ -128,41 +130,33 @@ export default function EntitiesPage() {
         </Panel>
       ) : null}
 
-      <div className={table.wrap}>
-        <table className={table.table}>
-          <thead>
-            <tr>{["Entity", "Country and tax", "Tax number", "Currency", "Status", ""].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr>
-          </thead>
-          <tbody>
-            {(entities.data ?? []).map((e) => (
-              <tr key={e.id} className="border-t border-border">
-                <td className="px-3 py-2.5 font-medium text-heading">
-                  {e.name}{" "}
-                  {e.is_default ? <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-ice px-2 py-0.5 text-xs font-medium"><Star className="size-3" aria-hidden /> Default</span> : null}
-                </td>
-                <td className="px-3 py-2.5">{regimeOf(e.tax_regime).label}</td>
-                <td className="px-3 py-2.5 font-mono text-xs">{e.tax_id ?? "Not entered yet"}</td>
-                <td className="px-3 py-2.5">{e.base_currency}</td>
-                <td className="px-3 py-2.5">{e.active ? "In use" : "Switched off"}</td>
-                <td className="px-3 py-2.5 text-right">
-                  {isAdmin ? (
-                    <span className="inline-flex gap-2">
-                      <Button variant="outline" size="sm" disabled={busy}
-                              onClick={() => setForm({ id: e.id, name: e.name, tax_regime: e.tax_regime, base_currency: e.base_currency, tax_id: e.tax_id ?? "", active: e.active })}>
-                        Edit
-                      </Button>
-                      {!e.is_default && e.active ? <Button variant="outline" size="sm" disabled={busy} onClick={() => makeDefault(e.id)}>Make default</Button> : null}
-                    </span>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable rows={entities.data} loading={entities.loading} rowKey={(e) => e.id} noun={["legal entity", "legal entities"]}
+                 empty="No legal entities yet."
+                 columns={[
+                   { key: "name", header: "Entity", sortValue: (e) => e.name, searchValue: (e) => e.name,
+                     cell: (e) => (
+                       <span className="flex items-center gap-2 font-medium text-heading">
+                         {e.name}
+                         {e.is_default ? <StatusPill tone="info" icon={Star}>Default</StatusPill> : null}
+                       </span>
+                     ) },
+                   { key: "regime", header: "Country and tax", cell: (e) => regimeOf(e.tax_regime).label },
+                   { key: "taxid", header: "Tax number", searchValue: (e) => e.tax_id, cell: (e) => <span className="font-mono text-xs">{e.tax_id ?? "Not entered yet"}</span> },
+                   { key: "currency", header: "Currency", cell: (e) => e.base_currency },
+                   { key: "status", header: "Status", cell: (e) => <StatusPill tone={e.active ? "success" : "muted"}>{e.active ? "In use" : "Switched off"}</StatusPill> },
+                   { key: "actions", header: "", align: "right", cell: (e) => isAdmin ? (
+                     <span className="inline-flex gap-2">
+                       <Button variant="outline" size="sm" disabled={busy}
+                               onClick={() => setForm({ id: e.id, name: e.name, tax_regime: e.tax_regime, base_currency: e.base_currency, tax_id: e.tax_id ?? "", active: e.active })}>
+                         Edit
+                       </Button>
+                       {!e.is_default && e.active ? <Button variant="outline" size="sm" disabled={busy} onClick={() => makeDefault(e.id)}>Make default</Button> : null}
+                     </span>
+                   ) : null },
+                 ]} />
 
       <Panel title="Exchange rates">
-        <div className="space-y-4 p-4">
+        <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Typed in by finance, one rate per pair and date. Orrfin never fetches or estimates a rate, and never converts an invoice to make it match.
           </p>
@@ -186,7 +180,7 @@ export default function EntitiesPage() {
             <Button onClick={addRate} disabled={busy || !rate.rate}>Add rate</Button>
           </div>
           {rates.data && rates.data.length > 0 ? (
-            <table className={table.table}>
+            <table className={`${table.table} rounded-lg border border-border`}>
               <thead>
                 <tr>{["Date", "Pair", "Rate", "Entered by"].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr>
               </thead>

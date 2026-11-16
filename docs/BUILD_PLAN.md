@@ -92,6 +92,8 @@ Still not built in v2.4: real bank connections, GST filing, journals, ERP paymen
 | 48 | **Eight more connectors**, all Simulated until a real test account exists: QuickBooks Online, Xero, Sage Intacct, Sage 50/200, Acumatica, Focus X, Marg ERP, and a UAE VAT mode for TallyPrime. Same port, registry, contract and failure suites. | The most used systems in India, the Gulf and globally |
 | 49 | **Spend insights** (spend cube, commitment vs invoiced vs paid kept separate), **generated PDFs** (PO, RFQ, payment advice, audit pack) and **App Studio** (custom object = form + workflow + list view; no customer code runs). | Reporting and documents buyers expect; safe extensibility |
 | 50 | **Security hardening and attack pass**: MFA, CSRF tokens, login lockout, rate limits, strict security headers, Postgres row-level security on `org_id`, portal isolation; every finding becomes a regression test. Then cleanup and restructure. Steps 30–40; AWS (Step 28) and the final review (Step 29) run after Step 40. | The §12 gates need these before any pilot |
+| 51 | **Step 41: team, seats and UI refresh** (ADR 0011). The admin who buys Orrfin invites the team by email or single-use link, sets role, approval limit, manager and department, and deactivates leavers; requesters are free, other roles use a simulated power seat. The app moves to a GoHighLevel-style shell (navy sidebar, area tabs) with one shared list table. | A customer has to be able to add its own people |
+| 52 | **Step 42: need-first intake and POs built by procurement** (ADR 0012). Per-org `intake_flow`: in `need_first` the employee states only the need (what, how many, by when; no vendor, price optional), pasted from WhatsApp or email if that is how it arrived; the requester's manager approves the need; procurement puts approved needs on one Orrfin PO per vendor (same item merged), picks ERP item codes and rates; the PO is approved by amount (tiers without the manager step); one ERP draft PO is written for all the needs; the PO is "sent" to the vendor by simulated email with a PDF. `buyer_first` stays as before. | How the founder's customers actually buy: GM approves the need, procurement chooses vendor and price |
 
 Still not built in v3.0: real bank or card-network connections, GST or VAT filing, journals, ERP payment entries, vendor-master writes to an ERP, e-signature, autonomous negotiation, auctions.
 
@@ -144,6 +146,7 @@ It has two connected workflows:
 | Intake request (purchase request), its lines, routing and approvals | **Orrfin** | Owns |
 | Categories (which buyer owns which category) and approval policies (amount tiers) | **Orrfin** | Owns; configured per org |
 | Purchase order | ERP | Orrfin writes a **draft** PO through the outbox after the request is approved (§8); a human submits it in the ERP. After that, Orrfin mirrors it read-only like any other PO. POs created directly in the ERP are mirrored too. *(For an ERP with no draft PO through its API, such as SAP S/4HANA, Orrfin drafts a purchase requisition instead; see §8.)* |
+| Orrfin PO built from approved needs, and the messages sent to its vendor *(Step 42, ADR 0012)* | **Orrfin** | Owns until its ERP draft PO is confirmed; from then the ERP's PO is the order of record and Orrfin mirrors it (`purchase_orders.order_po_id`). Messages are simulated: stored and shown, never sent |
 | Goods receipt (ERPNext "Purchase Receipt", Tally "Receipt Note", SAP material document) | ERP | Read-only mirror |
 | Invoice PDF, extracted fields, field edits | **Orrfin** | Owns; every edit is audited |
 | Match result, exceptions, review decisions | **Orrfin** | Owns; append-only |
@@ -309,6 +312,11 @@ Every business table has `id (uuid)`, `org_id (uuid, not null, indexed)`, `creat
 | `custom_objects`, `custom_records`, `saved_views` *(v3.0)* | object: `key`, `name`, `request_type_id` (its form), `workflow_definition_id`; record: `object_id`, `values jsonb`, `status`; view: `owner_id`, `subject`, `filters jsonb`, `columns jsonb` |
 | `users` *(v3.0, additive)* | `totp_secret_encrypted`, `mfa_enabled`, `failed_logins`, `locked_until`, `password_changed_at` |
 
+| `orgs`, `purchase_requests`, `request_lines` *(Step 42, additive)* | `orgs.intake_flow` ∈ {buyer_first, need_first}; requests: `source_channel` ∈ {form, whatsapp, email}, `source_message` (the message word for word), `entered_by_id` (who typed it for the employee); lines: `unit` |
+| `order_pos`, `order_po_lines`, `order_po_line_sources`, `order_po_approvals` *(Step 42)* | PO: `number` (PO-0001), `vendor_id`, `status` ∈ {draft, in_approval, returned, approved, rejected, sent, cancelled}, `amount`, `needed_by`, `note_to_vendor`, `approval_round`, `created_by_id`, `completed_by_id` (barred from approving), `sent_at`, `sent_by_id`; line: `item_code`, `description`, `unit`, `qty`, `rate`, `amount`, `hsn`; source: `order_po_line_id`, `request_line_id`, `request_id`, `qty`, `active` (partial unique index: one live PO per request line); approvals as `request_approvals` |
+| `vendor_messages` *(Step 42, simulated)* | `order_po_id`, `channel` ∈ {email, whatsapp}, `to_address`, `subject`, `body`, `attachment_name`, `created_by_id` |
+| `erp_outbox`, `purchase_orders` *(Step 42, additive)* | `order_po_id` on both; the outbox check becomes exactly one of `invoice_id`, `request_id`, `order_po_id` |
+
 **Database grants:** the application role gets `INSERT, SELECT` on `audit_events`, with no `UPDATE` or `DELETE`. Migrations run as a separate owner role.
 
 **Duplicate-invoice key:** `org_id + vendor_gstin + invoice_no_norm + fiscal_year`. The normalised invoice number is upper-cased, with spaces and the characters `/ - _` removed, and leading zeros stripped. Matching on the key alone raises a warning; matching on the key **plus** the same total raises a blocking exception.
@@ -439,6 +447,12 @@ For each quote: landed cost = Σ(line qty × rate) + tax + freight, in the RFQ c
 - **UNKNOWN → lookup first:** `GET` Purchase Orders filtered on `orrfin_ref`. Found → `CONFIRMED`; not found → retry the POST. The unique field is the second safety net.
 - **After a human submits the draft in ERPNext,** the next pull sync sees it (`origin = orrfin`, linked by `request_id`) and the request becomes `po_open`.
 - **Demo:** "Retry sync" on a drafted PO shows *"already in ERPNext as PUR-ORD-xxxx, no duplicate created."*
+
+**Draft POs from an Orrfin PO (Step 42, ADR 0012).** In need-first orgs one ERP draft PO covers several requests:
+- **Key:** `idempotency_key = sha256(org_id|order_po_id|"purchase_order")`, one ERP PO per Orrfin PO. The outbox row carries `order_po_id` (not `request_id`).
+- **Trigger:** the Orrfin PO's approval (or its submit, when its amount needs no approval), in the same transaction as the status change, the job and the audit event.
+- **Push and lookup:** exactly as above; the remarks name every request ("PO-0001 (PR-0005, PR-0006)").
+- **After confirmation** procurement may "send" the PO to the vendor (simulated email, PDF attached); the email quotes the ERP number so the supplier's invoice does. A human still submits the draft in the ERP; the next pull links the mirrored PO through `order_po_id`.
 
 ---
 

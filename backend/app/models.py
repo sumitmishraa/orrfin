@@ -45,6 +45,13 @@ REQUEST_STATUSES = (
     "approved", "rejected", "po_drafted", "po_open", "cancelled",
 )
 DECISIONS = ("approve", "reject", "return")
+# Step 42 (ADR 0012): who prices a request. "buyer_first" (Steps 4-41): the buyer adds vendor and rates,
+# then the amount tiers approve the request. "need_first": the employee states only the need, their
+# manager approves it, and procurement prices approved needs on a combined PO that Finance approves.
+INTAKE_FLOWS = ("buyer_first", "need_first")
+REQUEST_CHANNELS = ("form", "whatsapp", "email")
+ORDER_PO_STATUSES = ("draft", "in_approval", "returned", "approved", "rejected", "sent", "cancelled")
+VENDOR_MESSAGE_CHANNELS = ("email", "whatsapp")
 JOB_STATUSES = ("queued", "running", "done", "failed")
 OUTBOX_STATES = ("PENDING", "SENT", "CONFIRMED", "FAILED", "UNKNOWN")
 CONNECTION_MODES = ("simulated", "live")
@@ -72,8 +79,15 @@ class TimestampMixin:
 
 class Org(TimestampMixin, Base):
     __tablename__ = "orgs"
+    __table_args__ = (CheckConstraint(_in("intake_flow", INTAKE_FLOWS), name="intake_flow"),)
     id: Mapped[uuid.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Step 41 (ADR 0011): the workspace's simulated plan. Requesters are free and unlimited; buyer,
+    # approver, finance and admin each use one "power seat". No real billing exists.
+    plan_name: Mapped[str] = mapped_column(String(40), nullable=False, server_default="Growth")
+    power_seat_limit: Mapped[int] = mapped_column(Integer, nullable=False, server_default="10")
+    # Step 42 (ADR 0012): see INTAKE_FLOWS. Existing orgs keep "buyer_first"; the demo org uses "need_first".
+    intake_flow: Mapped[str] = mapped_column(String(20), nullable=False, server_default="buyer_first")
 
 
 class User(TimestampMixin, Base):
@@ -96,6 +110,10 @@ class User(TimestampMixin, Base):
     mfa_secret_encrypted: Mapped[str | None] = mapped_column(Text)
     mfa_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     mfa_last_step: Mapped[int | None] = mapped_column(BigInteger)
+    # Step 41: team management. Who invited this person, their department, and when they were last seen.
+    department: Mapped[str | None] = mapped_column(String(80))
+    invited_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     @property
     def mfa_enabled(self) -> bool:
@@ -110,6 +128,28 @@ class UserSession(TimestampMixin, Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TeamInvite(TimestampMixin, Base):
+    """An invitation for a new team member (Step 41, ADR 0011, §9).
+
+    Single-use: only a SHA-256 of the token is stored and it expires in 7 days. The `users` row is
+    created only when the invitation is accepted, so a pending invite never holds a login.
+    """
+    __tablename__ = "team_invites"
+    __table_args__ = (CheckConstraint(_in("role", ROLES), name="role"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    approval_limit: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    manager_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    department: Mapped[str | None] = mapped_column(String(80))
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    invited_by_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class LoginThrottle(TimestampMixin, Base):
@@ -197,6 +237,7 @@ class PurchaseRequest(TimestampMixin, Base):
     __tablename__ = "purchase_requests"
     __table_args__ = (
         CheckConstraint(_in("status", REQUEST_STATUSES), name="status"),
+        CheckConstraint(_in("source_channel", REQUEST_CHANNELS), name="source_channel"),
         UniqueConstraint("org_id", "number"),
     )
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -223,6 +264,12 @@ class PurchaseRequest(TimestampMixin, Base):
     # v3.0 intake forms (additive): the type it was raised as and the answers to that type's questions.
     request_type_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("request_types.id"))
     custom_values: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # Step 42 (additive): how the need reached Orrfin. A WhatsApp or email message is kept word for word,
+    # and `entered_by_id` is set when a manager or procurement typed it in for the employee (who then
+    # checks and submits it themselves, so the requester is still the one who asks).
+    source_channel: Mapped[str] = mapped_column(String(10), nullable=False, server_default="form")
+    source_message: Mapped[str | None] = mapped_column(Text)
+    entered_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 
 class RequestLine(TimestampMixin, Base):
@@ -238,6 +285,7 @@ class RequestLine(TimestampMixin, Base):
     est_rate: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     hsn: Mapped[str | None] = mapped_column(String(10))
+    unit: Mapped[str | None] = mapped_column(String(20))  # Step 42: "box", "pcs", "ream"; free text
 
 
 class RequestApproval(TimestampMixin, Base):
@@ -287,6 +335,8 @@ class PurchaseOrder(TimestampMixin, Base):
     origin: Mapped[str] = mapped_column(String(10), nullable=False, server_default="erp")
     # The PO number printed on invoices when the ERP names its record differently (ports/erp.py).
     po_number: Mapped[str | None] = mapped_column(String(140), index=True)
+    # Step 42: the Orrfin PO this ERP order was drafted from (it may cover several requests).
+    order_po_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("order_pos.id"))
 
 
 class PoLine(TimestampMixin, Base):
@@ -493,7 +543,7 @@ class ErpOutbox(TimestampMixin, Base):
         CheckConstraint(_in("state", OUTBOX_STATES), name="state"),
         CheckConstraint(_in("doc_type", ("purchase_invoice", "purchase_order")), name="doc_type"),
         # Exactly one source document per outbox row (§5).
-        CheckConstraint("(invoice_id IS NULL) <> (request_id IS NULL)", name="one_source"),
+        CheckConstraint("num_nonnulls(invoice_id, request_id, order_po_id) = 1", name="one_source"),
     )
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID] = _org_fk()
@@ -503,10 +553,111 @@ class ErpOutbox(TimestampMixin, Base):
     doc_type: Mapped[str] = mapped_column(String(20), nullable=False)
     invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id"))
     request_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("purchase_requests.id"))
+    # Step 42: a combined PO built from several approved needs (one ERP draft PO for all of them).
+    order_po_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("order_pos.id"))
     state: Mapped[str] = mapped_column(String(10), nullable=False, server_default="PENDING")
     erp_doc_name: Mapped[str | None] = mapped_column(String(140))
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class OrderPo(TimestampMixin, Base):
+    """Step 42 (ADR 0012): a purchase order procurement builds in Orrfin from approved needs.
+
+    Orrfin owns it until its ERP draft is confirmed (§2); the ERP's PO is then the order of record.
+    Shown to people as PO-0001. Lines may merge the same item from several requests.
+    """
+    __tablename__ = "order_pos"
+    __table_args__ = (
+        CheckConstraint(_in("status", ORDER_PO_STATUSES), name="status"),
+        UniqueConstraint("org_id", "number"),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=False)
+    created_by_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="draft")
+    amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False, server_default="0")
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default="INR")
+    needed_by: Mapped[date | None] = mapped_column(Date)
+    note_to_vendor: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    approval_round: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # The person who sent it for approval; segregation of duties bars them from approving it (§9).
+    completed_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class OrderPoLine(TimestampMixin, Base):
+    __tablename__ = "order_po_lines"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    order_po_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("order_pos.id", ondelete="CASCADE"), nullable=False, index=True)
+    line_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    item_code: Mapped[str] = mapped_column(String(140), nullable=False)
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    unit: Mapped[str | None] = mapped_column(String(20))
+    qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    rate: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    hsn: Mapped[str | None] = mapped_column(String(10))
+
+
+class OrderPoLineSource(TimestampMixin, Base):
+    """Which request line a PO line orders. `active` turns false when the PO is cancelled or rejected,
+    which frees the request line; the partial unique index allows only one live PO per request line."""
+    __tablename__ = "order_po_line_sources"
+    __table_args__ = (
+        Index("uq_order_po_line_sources_live_request_line", "request_line_id", unique=True,
+              postgresql_where=text("active")),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    order_po_line_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("order_po_lines.id", ondelete="CASCADE"), nullable=False, index=True)
+    request_line_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("request_lines.id"), nullable=False, index=True)
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("purchase_requests.id"), nullable=False, index=True)
+    qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+
+class OrderPoApproval(TimestampMixin, Base):
+    __tablename__ = "order_po_approvals"
+    __table_args__ = (
+        CheckConstraint(_in("decision", DECISIONS), name="decision"),
+        UniqueConstraint("order_po_id", "round", "step"),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    order_po_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("order_pos.id"), nullable=False, index=True)
+    round: Mapped[int] = mapped_column(Integer, nullable=False)
+    step: Mapped[int] = mapped_column(Integer, nullable=False)
+    required_role: Mapped[str] = mapped_column(String(20), nullable=False)
+    approver_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    decision: Mapped[str | None] = mapped_column(String(10))
+    reason: Mapped[str | None] = mapped_column(Text)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class VendorMessage(TimestampMixin, Base):
+    """Step 42: the PO as sent to the vendor. Simulated: Orrfin records and shows it but sends nothing."""
+    __tablename__ = "vendor_messages"
+    __table_args__ = (CheckConstraint(_in("channel", VENDOR_MESSAGE_CHANNELS), name="channel"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    order_po_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("order_pos.id"), nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(10), nullable=False)
+    to_address: Mapped[str] = mapped_column(String(320), nullable=False)
+    subject: Mapped[str] = mapped_column(String(300), nullable=False, server_default="")
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    attachment_name: Mapped[str | None] = mapped_column(String(200))
+    created_by_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
 
 class AuditEvent(Base):

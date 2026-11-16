@@ -8,41 +8,48 @@ import { useState } from "react";
 import Link from "next/link";
 import { Network, ShieldCheck, ShieldX } from "lucide-react";
 
-import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
+import { EmptyState, ErrorNotice, Loading, PageHeader } from "@/components/page";
+import { DataTable } from "@/components/ui/data-table";
+import { StatusPill } from "@/components/ui/display";
+import { Sheet } from "@/components/ui/overlay";
 import { useMe } from "@/components/session";
 import { formatDateTime } from "@/lib/format";
 import type { AuditEntity, AuditTrail } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
 
-function Trail({ entityId }: { entityId: string }) {
+function Trail({ entityId, onClose }: { entityId: string; onClose: () => void }) {
   const { data, error, loading, reload } = useApi<AuditTrail>(`/audit/${entityId}`);
-  if (loading) return <Loading />;
-  if (error || !data) return <ErrorNotice message={error ?? "Not found."} />;
-  const graphParam = data.entity_type === "invoice" ? "invoice_id" : "request_id";
+  const graphParam = data?.entity_type === "invoice" ? "invoice_id" : "request_id";
   return (
-    <Panel title={data.label} actions={
-      <div className="flex items-center gap-3">
-        <button type="button" onClick={() => void reload()}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${data.chain_valid ? "bg-success/10 text-success" : "bg-error/10 text-error"}`}>
-          {data.chain_valid ? <ShieldCheck className="size-3.5" aria-hidden /> : <ShieldX className="size-3.5" aria-hidden />}
-          {data.chain_valid ? "Chain verified" : "Chain broken: history was altered"} · verify again
-        </button>
-        <Link href={`/control-graph?${graphParam}=${data.entity_id}`} className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
-          <Network className="size-4" aria-hidden /> Control Graph
-        </Link>
-      </div>
-    }>
-      <ol className="flex flex-col gap-2 text-sm">
-        {data.events.map((e) => (
-          <li key={e.seq} className="flex flex-wrap gap-x-2">
-            <span className="w-6 text-right text-muted-foreground">{e.seq}</span>
-            <span className="font-medium text-heading">{e.action.replaceAll("_", " ")}</span>
-            <span className="text-muted-foreground">{e.actor_name ?? "System"} · {formatDateTime(e.at)}</span>
-            <span className="font-mono text-xs text-muted-foreground" title="This event's fingerprint">#{e.hash.slice(0, 10)}</span>
-          </li>
-        ))}
-      </ol>
-    </Panel>
+    <Sheet open onOpenChange={(open) => !open && onClose()} title={data?.label ?? "History"}
+           description="Every event in order. Each one carries the fingerprint of the one before it."
+           header={data ? (
+             <div className="flex flex-wrap items-center gap-3 pb-3">
+               <button type="button" onClick={() => void reload()} title="Verify the chain again">
+                 {data.chain_valid
+                   ? <StatusPill tone="success" icon={ShieldCheck}>Chain verified · check again</StatusPill>
+                   : <StatusPill tone="danger" icon={ShieldX}>Chain broken: history was altered</StatusPill>}
+               </button>
+               <Link href={`/control-graph?${graphParam}=${data.entity_id}`} className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
+                 <Network className="size-4" aria-hidden /> Control Graph
+               </Link>
+             </div>
+           ) : undefined}>
+      {loading ? <Loading /> : error || !data ? <ErrorNotice message={error ?? "Not found."} /> : (
+        <ol className="relative space-y-4 border-l border-border pl-5 text-sm">
+          {data.events.map((e) => (
+            <li key={e.seq} className="relative">
+              <span aria-hidden className="absolute -left-[25px] top-1.5 size-2.5 rounded-full border-2 border-white bg-brand-bright ring-1 ring-border" />
+              <p className="font-medium capitalize text-heading">{e.action.replaceAll("_", " ")}</p>
+              <p className="text-xs text-muted-foreground">
+                #{e.seq} · {e.actor_name ?? "System"} · {formatDateTime(e.at)} ·{" "}
+                <span className="font-mono" title="This event's fingerprint">{e.hash.slice(0, 10)}</span>
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Sheet>
   );
 }
 
@@ -57,30 +64,23 @@ export default function AuditPage() {
     <>
       <PageHeader title="Audit" description="Every change, with who and when. Each record's history is hash-chained, so tampering shows." />
       <ErrorNotice message={error} />
-      {loading ? <Loading /> : !data?.length ? <EmptyState>No history yet.</EmptyState> : (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-          <div className={table.wrap}>
-            <table className={table.table}>
-              <thead><tr>{["Record", "Status", "Events", "Last change"].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr></thead>
-              <tbody>
-                {data.map((e) => (
-                  <tr key={e.entity_id} className={`cursor-pointer hover:bg-ice-light ${selected === e.entity_id ? "bg-ice" : ""}`}
-                      onClick={() => setSelected(e.entity_id)}>
-                    <td className={table.td}>
-                      <button type="button" className="text-left font-medium text-primary hover:underline">{e.label}</button>
-                      <p className="text-xs text-muted-foreground">{e.entity_type === "invoice" ? "Invoice" : "Purchase request"}</p>
-                    </td>
-                    <td className={table.td}>{e.status.replaceAll("_", " ")}</td>
-                    <td className={`${table.td} ${table.num}`}>{e.events}</td>
-                    <td className={table.td}>{e.last_action.replaceAll("_", " ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {selected ? <Trail key={selected} entityId={selected} /> : <EmptyState>Choose a record to see its timeline and verify its chain.</EmptyState>}
-        </div>
-      )}
+      <DataTable rows={data} loading={loading} rowKey={(e) => e.entity_id} noun={["record", "records"]}
+                 onRowClick={(e) => setSelected(e.entity_id)} empty="No history yet."
+                 filters={[{ key: "invoice", label: "Invoices", test: (e) => e.entity_type === "invoice" },
+                           { key: "request", label: "Requests", test: (e) => e.entity_type !== "invoice" }]}
+                 columns={[
+                   { key: "record", header: "Record", sortValue: (e) => e.label, searchValue: (e) => e.label,
+                     cell: (e) => (
+                       <span className="block leading-tight">
+                         <span className="font-medium text-primary">{e.label}</span>
+                         <span className="mt-0.5 block text-xs text-muted-foreground">{e.entity_type === "invoice" ? "Invoice" : "Purchase request"}</span>
+                       </span>
+                     ) },
+                   { key: "status", header: "Status", sortValue: (e) => e.status, cell: (e) => <StatusPill><span className="capitalize">{e.status.replaceAll("_", " ")}</span></StatusPill> },
+                   { key: "events", header: "Events", align: "right", sortValue: (e) => e.events, cell: (e) => e.events },
+                   { key: "last", header: "Last change", searchValue: (e) => e.last_action, cell: (e) => <span className="capitalize text-muted-foreground">{e.last_action.replaceAll("_", " ")}</span> },
+                 ]} />
+      {selected ? <Trail key={selected} entityId={selected} onClose={() => setSelected(null)} /> : null}
     </>
   );
 }

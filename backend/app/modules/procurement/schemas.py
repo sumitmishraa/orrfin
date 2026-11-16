@@ -35,8 +35,10 @@ class UserOut(BaseModel):
 class LineIn(BaseModel):
     description: str = Field(min_length=1, max_length=300)
     qty: Qty
-    est_rate: Rate
+    # Need-first (Step 42): the employee may not know the price; 0 means "price unknown".
+    est_rate: Rate = Decimal("0")
     hsn: str | None = Field(default=None, max_length=10)
+    unit: str | None = Field(default=None, max_length=20)
 
 
 class RequestCreate(BaseModel):
@@ -52,6 +54,11 @@ class RequestCreate(BaseModel):
     custom_values: dict[str, Any] = Field(default_factory=dict, max_length=40)
     # Step 24: set when the form was pre-filled by the intake agent; recorded in the audit event.
     ai_draft: "AiDraftMeta | None" = None
+    # Step 42: how the need arrived. A WhatsApp or email message is kept word for word.
+    source_channel: Literal["form", "whatsapp", "email"] = "form"
+    source_message: str | None = Field(default=None, max_length=4000)
+    # Step 42: a manager or procurement entering a need for an employee (the employee then submits it).
+    requested_for_id: uuid.UUID | None = None
 
 
 class AiDraftMeta(BaseModel):
@@ -104,6 +111,9 @@ class LineOut(BaseModel):
     est_rate: Decimal
     amount: Decimal
     hsn: str | None
+    unit: str | None = None
+    # Step 42 (need-first): the Orrfin PO this line is on, e.g. {"po_number": "PO-0001", "po_status": "sent"}.
+    placement: dict[str, Any] | None = None
 
 
 class StepOut(BaseModel):
@@ -176,3 +186,8 @@ class RequestDetail(RequestSummary):
     allowed: AllowedActions
     po_sync: dict[str, Any] | None = None  # Step 15: the draft PO's outbox status in the ERP
     po_sync_note: str | None = None  # Step 15: why an approved request was not sent to the ERP
+    # Step 42 (ADR 0012)
+    intake_flow: str = "buyer_first"
+    source_channel: str = "form"
+    source_message: str | None = None
+    entered_by_name: str | None = None

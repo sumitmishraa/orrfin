@@ -55,11 +55,18 @@ export default function ClosePage() {
             </p>
           ) : data.reopen_reason ? <p className="text-sm text-warning">Reopened: “{data.reopen_reason}”</p> : null}
 
-          <Panel title="Checklist">
-            <ul className="flex flex-col gap-3">
+          <Panel title="Checklist" actions={
+            <span className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="tabular-nums">{data.checklist.filter((c) => c.ok).length} of {data.checklist.length} checks</span>
+              <span aria-hidden className="h-1.5 w-24 overflow-hidden rounded-full bg-ice">
+                <span className="block h-full rounded-full bg-brand-blue" style={{ width: `${(data.checklist.filter((c) => c.ok).length / Math.max(data.checklist.length, 1)) * 100}%` }} />
+              </span>
+            </span>
+          }>
+            <ul className="-my-1 divide-y divide-border/70">
               {data.checklist.map((c) => (
-                <li key={c.key} className="text-sm">
-                  <p className={`flex items-center gap-2 ${c.ok ? "text-success" : "text-warning"}`}>
+                <li key={c.key} className="py-3 text-sm">
+                  <p className={`flex items-center gap-2 font-medium ${c.ok ? "text-success" : "text-[#8a5a12]"}`}>
                     {c.ok ? <CircleCheck className="size-4" aria-hidden /> : <TriangleAlert className="size-4" aria-hidden />}
                     {c.label}{c.ok ? "" : ` · ${c.open} open`}
                   </p>
@@ -77,7 +84,7 @@ export default function ClosePage() {
           <Panel title={`Received, not yet invoiced · ${formatINR(data.received_not_invoiced_total)}`}
                  actions={<a href={`/api/close/${data.period}/received-not-invoiced.csv`} className="inline-flex items-center gap-1 text-sm text-primary hover:underline"><Download className="size-4" aria-hidden /> CSV</a>}>
             {data.received_not_invoiced.length ? (
-              <div className={table.wrap}><table className={table.table}>
+              <div className="-mx-4 overflow-x-auto border-y border-border"><table className={table.table}>
                 <thead><tr>{["Vendor", "PO", "Item", "Qty", "PO rate", "Amount"].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr></thead>
                 <tbody>{data.received_not_invoiced.map((r) => (
                   <tr key={`${r.po}-${r.item_code}`}>
@@ -95,7 +102,7 @@ export default function ClosePage() {
             {flux ? <ul className="list-disc pl-5 text-sm">{flux.bullets.map((b) => <li key={b}>{b}</li>)}</ul> : <p className="text-sm text-muted-foreground">Compares this month with last month, from Orrfin&apos;s numbers.</p>}
           </Panel>
 
-          {data.can_close ? <Button className="self-start" onClick={() => void act(() => post<Close>(`/close/${data.period}/close`, { notes }))}><Lock aria-hidden /> Close {data.period}</Button> : null}
+          {data.can_close ? <Button size="lg" className="self-start" onClick={() => void act(() => post<Close>(`/close/${data.period}/close`, { notes }))}><Lock aria-hidden /> Close {data.period}</Button> : null}
           {data.can_reopen ? (
             <Panel title="Reopen (admin)">
               <Textarea aria-label="Reason to reopen" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />

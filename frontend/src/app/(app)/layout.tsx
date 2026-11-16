@@ -8,11 +8,14 @@ import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/shell/app-shell";
 import { SessionProvider } from "@/components/session";
+import { ToastProvider } from "@/components/ui/toast";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <SessionProvider>
-      <AppShell>{children}</AppShell>
+      <ToastProvider>
+        <AppShell>{children}</AppShell>
+      </ToastProvider>
     </SessionProvider>
   );
 }

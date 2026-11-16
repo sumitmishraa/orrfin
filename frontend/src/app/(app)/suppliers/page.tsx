@@ -6,10 +6,11 @@
  * Orrfin does not create the vendor in the ERP: after approval a person does, and the sync links it.
  */
 import { useState } from "react";
-import Link from "next/link";
-import { Copy, UserPlus } from "lucide-react";
+import { CircleCheck, Clock, Copy, Hourglass, PauseCircle, Send, Undo2, UserPlus } from "lucide-react";
 
-import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
+import { ErrorNotice, PageHeader, Panel } from "@/components/page";
+import { DataTable } from "@/components/ui/data-table";
+import { PersonCell, StatusPill, type Tone } from "@/components/ui/display";
 import { useMe } from "@/components/session";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -19,9 +20,14 @@ import { useApi } from "@/lib/use-api";
 
 interface SupplierRow { id: string; legal_name: string; country: string; category: string; status: string; contact_name: string; on_hold: boolean; updated_at: string }
 
-const SUPPLIER_STATUS: Record<string, string> = {
-  invited: "Invited, waiting for the supplier", submitted: "Waiting for review", approved: "Approved, ready to hand over",
-  rejected: "Sent back to the supplier", handed_over: "Waiting to be created in the ERP", active: "Active",
+const SUPPLIER_STATUS: Record<string, { label: string; tone: Tone; icon: typeof Clock }> = {
+  invited: { label: "Invited, waiting for the supplier", tone: "muted", icon: Send },
+  submitted: { label: "Waiting for review", tone: "warning", icon: Hourglass },
+  in_review: { label: "In review", tone: "warning", icon: Hourglass },
+  approved: { label: "Approved, ready to hand over", tone: "info", icon: CircleCheck },
+  rejected: { label: "Sent back to the supplier", tone: "danger", icon: Undo2 },
+  handed_over: { label: "Waiting to be created in the ERP", tone: "info", icon: Clock },
+  active: { label: "Active", tone: "success", icon: CircleCheck },
 };
 const BLANK = { legal_name: "", country: "IN", category: "goods", contact_name: "", contact_email: "" };
 
@@ -33,8 +39,6 @@ export default function SuppliersPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (suppliers.loading) return <Loading />;
-  if (suppliers.error) return <ErrorNotice message={suppliers.error} />;
   const canInvite = ["buyer", "finance", "admin"].includes(me.role);
 
   async function invite() {
@@ -60,7 +64,7 @@ export default function SuppliersPage() {
         description="Invite a new supplier, check their details and hand them over to your ERP."
         actions={canInvite && !form ? <Button onClick={() => setForm(BLANK)}><UserPlus aria-hidden /> Invite a supplier</Button> : undefined}
       />
-      <ErrorNotice message={error} />
+      <ErrorNotice message={error ?? suppliers.error} />
 
       {link ? (
         <div role="status" className="space-y-2 rounded-lg border border-primary/40 bg-ice p-3 text-sm">
@@ -106,29 +110,31 @@ export default function SuppliersPage() {
         </Panel>
       ) : null}
 
-      {(suppliers.data ?? []).length === 0 ? <EmptyState>No suppliers yet. Invite one to start onboarding.</EmptyState> : (
-        <div className={table.wrap}>
-          <table className={table.table}>
-            <thead>
-              <tr>{["Supplier", "Country", "Supplies", "Status", "Updated"].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {suppliers.data?.map((s) => (
-                <tr key={s.id} className="border-t border-border">
-                  <td className="px-3 py-2.5">
-                    <Link href={`/suppliers/${s.id}`} className="font-medium text-heading hover:underline">{s.legal_name}</Link>
-                    {s.on_hold ? <span className="ml-2 rounded-full bg-error/10 px-2 py-0.5 text-xs font-medium text-error">On hold</span> : null}
-                  </td>
-                  <td className="px-3 py-2.5">{s.country === "IN" ? "India" : "UAE"}</td>
-                  <td className="px-3 py-2.5 capitalize">{s.category}</td>
-                  <td className="px-3 py-2.5">{SUPPLIER_STATUS[s.status] ?? s.status}</td>
-                  <td className="px-3 py-2.5">{formatDate(s.updated_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable rows={suppliers.data} loading={suppliers.loading} rowKey={(r) => r.id} noun={["supplier", "suppliers"]}
+                 rowHref={(r) => `/suppliers/${r.id}`} initialSort={{ key: "updated", dir: "desc" }}
+                 empty="No suppliers yet. Invite one to start onboarding."
+                 filters={[
+                   { key: "review", label: "Waiting for review", test: (r) => r.status === "submitted" || r.status === "in_review" },
+                   { key: "invited", label: "Invited", test: (r) => r.status === "invited" },
+                   { key: "active", label: "Active", test: (r) => r.status === "active" },
+                   { key: "hold", label: "On hold", test: (r) => r.on_hold },
+                 ]}
+                 columns={[
+                   { key: "name", header: "Supplier", sortValue: (r) => r.legal_name, searchValue: (r) => `${r.legal_name} ${r.contact_name}`,
+                     cell: (r) => <PersonCell name={r.legal_name} detail={r.contact_name} /> },
+                   { key: "country", header: "Country", sortValue: (r) => r.country, cell: (r) => (r.country === "IN" ? "India" : "UAE") },
+                   { key: "category", header: "Supplies", sortValue: (r) => r.category, cell: (r) => <span className="capitalize">{r.category}</span> },
+                   { key: "status", header: "Status", sortValue: (r) => r.status, cell: (r) => {
+                     const st = SUPPLIER_STATUS[r.status];
+                     return (
+                       <span className="flex flex-wrap gap-1.5">
+                         {st ? <StatusPill tone={st.tone} icon={st.icon}>{st.label}</StatusPill> : <StatusPill>{r.status}</StatusPill>}
+                         {r.on_hold ? <StatusPill tone="danger" icon={PauseCircle}>On hold</StatusPill> : null}
+                       </span>
+                     );
+                   } },
+                   { key: "updated", header: "Updated", sortValue: (r) => r.updated_at, cell: (r) => formatDate(r.updated_at) },
+                 ]} />
     </div>
   );
 }

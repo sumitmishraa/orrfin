@@ -13,7 +13,7 @@ MCP client ─────────── POST /mcp (API key) ────┘
 
 | Component | Folder | What it does |
 |---|---|---|
-| Web app | `frontend/` | Employee app in the shell (`components/shell/`), supplier portal under `/portal`; calls the API through `/api/*` |
+| Web app | `frontend/` | Employee app in the shell (`components/shell/`), supplier portal under `/portal`, invitation page `/join`; calls the API through `/api/*`. Shared kit in `components/ui/` (DataTable, Dialog/Sheet, menus, tabs, avatars, status pills, toasts) |
 | API | `backend/app/` | One FastAPI app; each product is a module under `app/modules/` with its own router |
 | Worker | `backend/app/worker.py` | Runs jobs from the `jobs` table: extract, match, ERP pull/push, mock bank, webhook delivery |
 | Database | `infra/docker-compose.yml` | Postgres 16; the app runs as the restricted `orrfin_app` role with row-level security per org |
@@ -32,6 +32,8 @@ MCP client ─────────── POST /mcp (API key) ────┘
 | `modules/contracts/` | Contracts | AI/pattern proposals must quote the PDF; a person confirms every term |
 | `modules/payments/` (+ `banking.py`), `modules/cards/` | Global payments, vendor cards | Simulated only: one currency per run, IBAN/SWIFT checks, mock card issuer |
 | `modules/agents/`, `app/mcp_server.py` | AI concierge, superagents, workflow-builder agent, MCP | Read + propose only; proposals are single-use and submitted by their person |
+| `modules/ordering/` | Orrfin POs built from approved needs (Step 42, ADR 0012) | Need-first orgs only; merges the same item across requests; PO chain = amount tiers minus the manager; builder can't approve; one ERP draft PO per Orrfin PO; simulated vendor email |
+| `modules/team/` | Team members, power seats, invitations (Step 41, ADR 0011) | Admin only; single-use hashed links; last-admin and own-role guards; deactivate, never delete |
 | `modules/spend/`, `modules/documents/`, `modules/app_studio/` | Spend insights, PDFs, App Studio | Deterministic cube per currency; PDFs from records; App Studio objects are data, not code |
 | `adapters/dialects.py`, `dialect_rest.py`, `dialect_rest_sim.py` | 8 more ERPs (all simulated) | One shared adapter, one field map per ERP; same contract and lost-reply suites |
 | `auth/totp.py`, `security/http.py`, `db.py` | Security | Two-step sign-in, CSRF guard and headers, row-level security per org ([SECURITY_REVIEW.md](SECURITY_REVIEW.md)) |

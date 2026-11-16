@@ -1,4 +1,4 @@
-﻿"""Login, logout and "who am I" endpoints (BUILD_PLAN Â§3 Auth, Â§9)."""
+"""Login, logout and "who am I" endpoints (BUILD_PLAN §3 Auth, §9)."""
 
 import uuid
 from decimal import Decimal
@@ -31,6 +31,33 @@ class Me(BaseModel):
     role: str
     approval_limit: Decimal
     mfa_enabled: bool = False
+    # Step 41: shown in the sidebar's workspace card and the member's profile.
+    department: str | None = None
+    org_name: str | None = None
+    plan_name: str | None = None
+    intake_flow: str = "buyer_first"  # Step 42: "need_first" shows the Orders pages and the simple need form
+
+
+def me_for(db, user) -> Me:
+    from app.models import Org
+
+    org = db.get(Org, user.org_id)
+    return Me.model_validate(user, from_attributes=True).model_copy(
+        update={"org_name": org.name if org else None, "plan_name": org.plan_name if org else None,
+                "intake_flow": org.intake_flow if org else "buyer_first"})
+
+
+def set_session_cookie(response: Response, token: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        settings.session_cookie_name,
+        token,
+        max_age=settings.session_hours * 3600,
+        httponly=True,  # page scripts can't read it, so an XSS bug can't steal the session
+        samesite="lax",  # other sites can't make the browser send it on a POST
+        secure=settings.session_cookie_secure,
+        path="/",
+    )
 
 
 @router.post("/login", response_model=Me)
@@ -71,16 +98,8 @@ def login(body: LoginRequest, request: Request, response: Response, db: DbSessio
         end_session(db, previous_token)
     token = start_session(db, user)
     db.commit()
-    response.set_cookie(
-        settings.session_cookie_name,
-        token,
-        max_age=settings.session_hours * 3600,
-        httponly=True,  # page scripts can't read it, so an XSS bug can't steal the session
-        samesite="lax",  # other sites can't make the browser send it on a POST
-        secure=settings.session_cookie_secure,
-        path="/",
-    )
-    return Me.model_validate(user, from_attributes=True)
+    set_session_cookie(response, token)
+    return me_for(db, user)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -94,8 +113,8 @@ def logout(request: Request, response: Response, db: DbSession) -> None:
 
 
 @router.get("/me", response_model=Me)
-def me(user: CurrentUser) -> Me:
-    return Me.model_validate(user, from_attributes=True)
+def me(user: CurrentUser, db: DbSession) -> Me:
+    return me_for(db, user)
 
 
 class CodeIn(BaseModel):

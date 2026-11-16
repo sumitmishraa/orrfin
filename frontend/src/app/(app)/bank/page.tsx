@@ -7,9 +7,11 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import { Upload } from "lucide-react";
+import { CircleCheck, CircleHelp, CircleMinus, Upload } from "lucide-react";
 
-import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
+import { ErrorNotice, Loading, PageHeader, Panel } from "@/components/page";
+import { DataTable } from "@/components/ui/data-table";
+import { StatusPill } from "@/components/ui/display";
 import { Button } from "@/components/ui/button";
 import { APP_HEADERS, post } from "@/lib/api";
 import { formatDate, formatINR } from "@/lib/format";
@@ -23,15 +25,16 @@ interface View {
   counts: Record<string, number>;
 }
 
-const TABS = [
-  { id: "suggested", label: "Suggested: please check" },
-  { id: "unmatched", label: "Not matched" },
-  { id: "matched", label: "Matched" },
-] as const;
+type Line = View["lines"][number];
+
+function LineStatus({ line }: { line: Line }) {
+  if (line.status === "matched") return <StatusPill tone="success" icon={CircleCheck}>Matched{line.method === "utr" ? " by UTR" : ""}</StatusPill>;
+  if (line.status === "suggested") return <StatusPill tone="warning" icon={CircleHelp}>Suggested: please check</StatusPill>;
+  return <StatusPill tone="muted" icon={CircleMinus}>Not matched</StatusPill>;
+}
 
 export default function BankPage() {
   const { data, setData, error, loading } = useApi<View>("/bank-statements");
-  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("suggested");
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function upload(file: File) {
@@ -58,7 +61,6 @@ export default function BankPage() {
     }
   }
 
-  const rows = (data?.lines ?? []).filter((l) => l.status === tab);
   return (
     <>
       <PageHeader title="Bank reconciliation"
@@ -78,30 +80,29 @@ export default function BankPage() {
               <p className="mt-2 text-xs text-muted-foreground">Download the bank statement from a settled payment run and upload it here.</p>
             </Panel>
           ) : null}
-          <div role="tablist" className="flex gap-2">
-            {TABS.map((t) => (
-              <Button key={t.id} role="tab" aria-selected={tab === t.id} size="sm" variant={tab === t.id ? "default" : "outline"} onClick={() => setTab(t.id)}>
-                {t.label} ({data.counts[t.id] ?? 0})
-              </Button>
-            ))}
-          </div>
-          {!rows.length ? <EmptyState>Nothing here.</EmptyState> : (
-            <div className={table.wrap}><table className={table.table}>
-              <thead><tr>{["Date", "Narration", "Reference", "Debit", "Payment", ""].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr></thead>
-              <tbody>{rows.map((l) => (
-                <tr key={l.id}>
-                  <td className={table.td}>{formatDate(l.date)}</td>
-                  <td className={table.td}>{l.narration}</td>
-                  <td className={table.td}>{l.reference}</td>
-                  <td className={`${table.td} ${table.num}`}>{formatINR(l.debit)}</td>
-                  <td className={table.td}>{l.payment ? <>{l.payment.run} · {formatINR(l.payment.net)}{l.method ? <span className="block text-xs text-muted-foreground">by {l.method === "utr" ? "UTR" : "amount, date and name"}</span> : null}</> : "—"}</td>
-                  <td className={table.td}>
-                    {l.status === "suggested" ? <Button size="sm" onClick={() => void act(`/bank-lines/${l.id}/accept`)}>Accept</Button> : null}
-                    {l.status !== "unmatched" ? <Button size="sm" variant="ghost" onClick={() => void act(`/bank-lines/${l.id}/unmatch`)}>Unmatch</Button> : null}
-                  </td>
-                </tr>))}</tbody>
-            </table></div>
-          )}
+          <DataTable rows={data.lines} rowKey={(l) => l.id} noun={["statement line", "statement lines"]}
+                     initialFilter={data.counts.suggested ? "suggested" : undefined}
+                     empty="No statement lines yet. Upload a statement CSV."
+                     filters={[
+                       { key: "suggested", label: "Suggested", test: (l) => l.status === "suggested" },
+                       { key: "unmatched", label: "Not matched", test: (l) => l.status === "unmatched" },
+                       { key: "matched", label: "Matched", test: (l) => l.status === "matched" },
+                     ]}
+                     columns={[
+                       { key: "date", header: "Date", sortValue: (l) => l.date, cell: (l) => formatDate(l.date) },
+                       { key: "narration", header: "Narration", searchValue: (l) => `${l.narration} ${l.reference}`,
+                         cell: (l) => <span className="block leading-tight"><span>{l.narration}</span><span className="mt-0.5 block font-mono text-xs text-muted-foreground">{l.reference}</span></span> },
+                       { key: "debit", header: "Debit", align: "right", sortValue: (l) => Number(l.debit), cell: (l) => <span className="font-medium">{formatINR(l.debit)}</span> },
+                       { key: "status", header: "Result", sortValue: (l) => l.status, cell: (l) => <LineStatus line={l} /> },
+                       { key: "payment", header: "Payment", searchValue: (l) => l.payment?.run,
+                         cell: (l) => l.payment ? <span className="block leading-tight"><span>{l.payment.run}</span><span className="mt-0.5 block text-xs text-muted-foreground">{formatINR(l.payment.net)}{l.method && l.method !== "utr" ? " · by amount, date and name" : ""}</span></span> : <span className="text-muted-foreground">—</span> },
+                       { key: "actions", header: "", align: "right", cell: (l) => (
+                         <span className="inline-flex gap-1">
+                           {l.status === "suggested" ? <Button size="sm" onClick={() => void act(`/bank-lines/${l.id}/accept`)}>Accept</Button> : null}
+                           {l.status !== "unmatched" ? <Button size="sm" variant="ghost" onClick={() => void act(`/bank-lines/${l.id}/unmatch`)}>Unmatch</Button> : null}
+                         </span>
+                       ) },
+                     ]} />
         </div>
       ) : null}
     </>

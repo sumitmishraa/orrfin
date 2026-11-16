@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * "Jump to" palette (BUILD_PLAN v3.0 change 37): Ctrl+K or the search box in the top bar opens it,
- * typing filters the pages this person can see, Enter goes there. It only navigates; it runs no
- * action, so it needs no permission checks of its own.
+ * "Jump to" palette (BUILD_PLAN v3.0 change 37; quick actions added in Step 41): Ctrl+K or the search
+ * box in the sidebar opens it, typing filters the quick actions and pages this person can see, Enter
+ * goes there. A quick action only opens the page where the action is done; it runs nothing itself,
+ * so it needs no permission checks of its own.
  */
 import { useMemo, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -18,16 +19,25 @@ interface Destination {
   icon: NavArea["icon"];
 }
 
-export function CommandPalette({ areas, onClose }: { areas: NavArea[]; onClose: () => void }) {
+export interface QuickAction {
+  href: string;
+  label: string;
+  icon: NavArea["icon"];
+}
+
+export function CommandPalette({ areas, actions = [], onClose }: { areas: NavArea[]; actions?: QuickAction[]; onClose: () => void }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState(0);
 
   const destinations = useMemo<Destination[]>(
-    () => areas.flatMap((area) => area.items.map((item) => ({
-      href: item.href, label: item.label, areaLabel: area.label, icon: item.icon,
-    }))),
-    [areas],
+    () => [
+      ...actions.map((a) => ({ ...a, areaLabel: "Quick action" })),
+      ...areas.flatMap((area) => area.items.map((item) => ({
+        href: item.href, label: item.label, areaLabel: area.label, icon: item.icon,
+      }))),
+    ],
+    [areas, actions],
   );
 
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -68,14 +78,14 @@ export function CommandPalette({ areas, onClose }: { areas: NavArea[]; onClose: 
           <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           <input autoFocus value={query} onKeyDown={onKeyDown}
                  onChange={(event) => { setQuery(event.target.value); setHighlighted(0); }}
-                 placeholder="Jump to a page" aria-label="Jump to a page"
+                 placeholder="Search pages and actions" aria-label="Search pages and actions"
                  role="combobox" aria-expanded="true" aria-controls="jump-results"
                  aria-activedescendant={results[active] ? `jump-${active}` : undefined}
                  className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
         </div>
         <ul id="jump-results" role="listbox" className="max-h-80 overflow-y-auto p-2">
           {results.length === 0 ? (
-            <li className="px-3 py-6 text-center text-sm text-muted-foreground">No page matches “{query}”.</li>
+            <li className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches “{query}”.</li>
           ) : results.map((destination, index) => {
             const Icon = destination.icon;
             const selected = index === active;

@@ -10,9 +10,8 @@ import { Plus } from "lucide-react";
 import { RequestTable } from "@/components/request-table";
 import { useMe } from "@/components/session";
 import { buttonVariants } from "@/components/ui/button";
-import { InvoiceStatus } from "@/components/invoice-status";
-import { EmptyState, ErrorNotice, Loading, PageHeader, table } from "@/components/page";
-import { formatINR } from "@/lib/format";
+import { InvoiceTable } from "@/components/invoice-table";
+import { ErrorNotice, PageHeader } from "@/components/page";
 import type { InvoiceSummary, RequestSummary } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
 
@@ -23,14 +22,14 @@ function Section({ title, path, empty, filter }: {
   filter?: (r: RequestSummary) => boolean;
 }) {
   const { data, error, loading } = useApi<RequestSummary[]>(path);
-  const rows = (data ?? []).filter(filter ?? (() => true));
+  const rows = data ? data.filter(filter ?? (() => true)) : null;
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-base font-semibold text-heading">
-        {title} {data ? <span className="text-muted-foreground">({rows.length})</span> : null}
+        {title} {rows ? <span className="font-normal text-muted-foreground">· {rows.length}</span> : null}
       </h2>
       <ErrorNotice message={error} />
-      {loading ? <Loading /> : <RequestTable rows={rows} empty={empty} />}
+      <RequestTable rows={rows} loading={loading} empty={empty} compact />
     </section>
   );
 }
@@ -40,27 +39,10 @@ function InvoiceSection({ title, path, empty }: { title: string; path: string; e
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-base font-semibold text-heading">
-        {title} {data ? <span className="text-muted-foreground">({data.length})</span> : null}
+        {title} {data ? <span className="font-normal text-muted-foreground">· {data.length}</span> : null}
       </h2>
       <ErrorNotice message={error} />
-      {loading ? <Loading /> : !data?.length ? <EmptyState>{empty}</EmptyState> : (
-        <div className={table.wrap}>
-          <table className={table.table}>
-            <thead><tr>{["Invoice", "Vendor", "Status", "Total", "At risk"].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr></thead>
-            <tbody>
-              {data.map((inv) => (
-                <tr key={inv.id} className="hover:bg-ice-light">
-                  <td className={table.td}><Link href={`/invoices/${inv.id}`} className="font-medium text-primary hover:underline">{inv.invoice_no ?? inv.filename}</Link></td>
-                  <td className={table.td}>{inv.vendor_name ?? "—"}</td>
-                  <td className={table.td}><InvoiceStatus status={inv.outcome === "stale" ? "stale" : inv.status} /></td>
-                  <td className={`${table.td} ${table.num}`}>{formatINR(inv.total)}</td>
-                  <td className={`${table.td} ${table.num} font-semibold text-error`}>{inv.amount_at_risk && inv.amount_at_risk !== "0.00" ? formatINR(inv.amount_at_risk) : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <InvoiceTable rows={data} loading={loading} empty={empty} compact sortByRisk />
     </section>
   );
 }

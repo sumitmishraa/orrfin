@@ -70,7 +70,12 @@ def _names(db: Session, ids: set[uuid.UUID | None]) -> dict[uuid.UUID, str]:
     return dict(db.execute(select(User.id, User.full_name).where(User.id.in_(ids))).all())
 
 
-def _waiting_on(request: PurchaseRequest, steps: list[RequestApproval], names: dict) -> str | None:
+def _waiting_on(request: PurchaseRequest, steps: list[RequestApproval], names: dict,
+                need_first: bool = False) -> str | None:
+    if request.status == "with_buyer" and need_first:
+        return f"Procurement: {names.get(request.assigned_buyer_id, 'any buyer')} to order it"
+    if request.status == "po_drafted" and need_first:
+        return "Procurement: PO waiting for approval or to be sent"
     if request.status == "with_buyer":
         return f"Buyer: {names.get(request.assigned_buyer_id, 'unassigned')}"
     if request.status == "submitted":
@@ -94,6 +99,7 @@ def _summaries(db: Session, requests: list[PurchaseRequest]) -> list[RequestSumm
     for step in db.scalars(select(RequestApproval).where(
             RequestApproval.request_id.in_([r.id for r in requests])).order_by(RequestApproval.step)):
         steps_by_request.setdefault(step.request_id, []).append(step)
+    need_first = service.intake_flow(db, requests[0].org_id) == service.NEED_FIRST
     out = []
     for r in requests:
         current = [s for s in steps_by_request.get(r.id, []) if s.round == r.approval_round]
@@ -101,13 +107,14 @@ def _summaries(db: Session, requests: list[PurchaseRequest]) -> list[RequestSumm
             id=r.id, number=r.number, title=r.title, status=r.status, amount=r.amount, currency=r.currency,
             category_name=categories.get(r.category_id, ""), requester_name=names.get(r.requested_by, ""),
             buyer_name=names.get(r.assigned_buyer_id), needed_by=r.needed_by, created_at=r.created_at,
-            updated_at=r.updated_at, waiting_on=_waiting_on(r, current, names)))
+            updated_at=r.updated_at, waiting_on=_waiting_on(r, current, names, need_first)))
     return out
 
 
 def _allowed(db: Session, user: User, request: PurchaseRequest, steps: list[RequestApproval]) -> AllowedActions:
     is_requester = request.requested_by == user.id
-    is_buyer = request.assigned_buyer_id == user.id
+    # Need-first orgs price needs on a PO (modules/ordering), never on the request itself.
+    is_buyer = request.assigned_buyer_id == user.id and service.intake_flow(db, request.org_id) != service.NEED_FIRST
     allowed = AllowedActions(
         edit=is_requester and request.status in service.EDITABLE_BY_REQUESTER,
         submit=is_requester and request.status in service.EDITABLE_BY_REQUESTER,
@@ -133,6 +140,10 @@ def _detail(db: Session, user: User, request: PurchaseRequest) -> RequestDetail:
     names = _names(db, {s.approver_id for s in steps} | {e.actor_id for e in events})
     vendors = dict(db.execute(select(Vendor.id, Vendor.name).where(
         Vendor.id.in_({v for v in (request.vendor_id, request.suggested_vendor_id) if v}))).all())
+    from app.modules.ordering.service import placements  # local import: ordering imports procurement
+
+    placed = placements(db, request.id)
+    entered_by = _names(db, {request.entered_by_id}).get(request.entered_by_id) if request.entered_by_id else None
     return RequestDetail(
         **summary.model_dump(),
         justification=request.justification, cost_center=request.cost_center,
@@ -146,7 +157,10 @@ def _detail(db: Session, user: User, request: PurchaseRequest) -> RequestDetail:
         if request.request_type_id else None,
         # "approved" = ready for the PO draft; the outbox moves it to po_drafted, the next sync to po_open.
         ready_for_po=request.status == "approved",
-        lines=[LineOut.model_validate(line) for line in service.request_lines(db, request)],
+        lines=[LineOut.model_validate(line).model_copy(update={"placement": placed.get(line.id)})
+               for line in service.request_lines(db, request)],
+        intake_flow=service.intake_flow(db, request.org_id), source_channel=request.source_channel,
+        source_message=request.source_message, entered_by_name=entered_by,
         current_steps=[StepOut(step=s.step, required_role=s.required_role, step_label=s.step_label,
                                designated_approver_id=s.designated_approver_id,
                                approver_id=s.approver_id,
@@ -192,7 +206,9 @@ def create_request(body: RequestCreate, user: CurrentUser, db: DbSession) -> Req
         cost_center=body.cost_center, needed_by=body.needed_by, suggested_vendor_id=body.suggested_vendor_id,
         lines=[service.LineInput(**line.model_dump()) for line in body.lines],
         ai_draft=body.ai_draft.model_dump() if body.ai_draft else None,
-        request_type_id=body.request_type_id, custom_values=body.custom_values)
+        request_type_id=body.request_type_id, custom_values=body.custom_values,
+        source_channel=body.source_channel, source_message=body.source_message,
+        requested_for_id=body.requested_for_id)
     return _commit_and_show(db, user, request)
 
 

@@ -16,6 +16,8 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Every page except the login page, the API proxy and Next's own files.
-  matcher: ["/((?!login|api|_next|favicon.ico).*)"],
+  // Every page except those seen before an employee signs in: the login page, the team invitation
+  // page (Step 41, /join), the supplier portal (its own login and cookie), plus the API proxy and
+  // Next's own files.
+  matcher: ["/((?!login|join|portal|api|_next|favicon.ico).*)"],
 };

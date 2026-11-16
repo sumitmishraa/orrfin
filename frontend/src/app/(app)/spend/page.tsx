@@ -7,7 +7,8 @@
 import { useState } from "react";
 import { Download } from "lucide-react";
 
-import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
+import { ErrorNotice, Loading, PageHeader } from "@/components/page";
+import { DataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
 import { API_URL } from "@/lib/api";
@@ -20,8 +21,17 @@ interface Cube {
 }
 const GROUPS = [["vendor", "Vendor"], ["category", "Category"], ["cost_center", "Cost centre"], ["month", "Month"], ["entity", "Legal entity"]];
 
-function Bar({ value, max }: { value: number; max: number }) {
-  return <div className="h-2 rounded bg-ice" aria-hidden><div className="h-2 rounded bg-primary" style={{ width: `${max ? Math.round((value / max) * 100) : 0}%` }} /></div>;
+function Bar({ value, max, tone = "bg-brand-blue" }: { value: number; max: number; tone?: string }) {
+  return <div className="h-1.5 rounded-full bg-ice" aria-hidden><div className={`h-1.5 rounded-full ${tone}`} style={{ width: `${max ? Math.round((value / max) * 100) : 0}%` }} /></div>;
+}
+
+function Card({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border bg-white p-4 shadow-raised">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <div className="mt-1">{children}</div>
+    </div>
+  );
 }
 
 export default function SpendPage() {
@@ -44,25 +54,25 @@ export default function SpendPage() {
         {GROUPS.map(([k, label]) => <option key={k} value={k}>By {label.toLowerCase()}</option>)}
       </Select>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Panel title="Invoiced without a PO"><p className="p-4 text-lg font-semibold tabular-nums">{sums(cube.data.no_po_spend)}</p></Panel>
-        <Panel title="Invoiced off contract"><p className="p-4 text-lg font-semibold tabular-nums">{sums(cube.data.off_contract_spend)}</p></Panel>
-        <Panel title="Sourcing savings">
-          <ul className="p-4 text-sm">{cube.data.sourcing_savings.length === 0 ? <li className="text-muted-foreground">No awarded RFQs yet.</li>
-            : cube.data.sourcing_savings.map((s) => <li key={s.rfq_id} className="tabular-nums">{s.arithmetic}</li>)}</ul>
-        </Panel>
+        <Card label="Invoiced without a PO"><p className="text-xl font-semibold tabular-nums text-heading">{sums(cube.data.no_po_spend)}</p></Card>
+        <Card label="Invoiced off contract"><p className="text-xl font-semibold tabular-nums text-heading">{sums(cube.data.off_contract_spend)}</p></Card>
+        <Card label="Sourcing savings">
+          <ul className="text-sm">{cube.data.sourcing_savings.length === 0 ? <li className="text-muted-foreground">No awarded RFQs yet.</li>
+            : cube.data.sourcing_savings.map((sv) => <li key={sv.rfq_id} className="tabular-nums">{sv.arithmetic}</li>)}</ul>
+        </Card>
       </div>
-      {cube.data.rows.length === 0 ? <EmptyState>No spend in this period.</EmptyState> : (
-        <div className={table.wrap}><table className={table.table}>
-          <thead><tr>{["Group", "Currency", "Committed", "Invoiced", "Paid", ""].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr></thead>
-          <tbody>{cube.data.rows.map((r) => (
-            <tr key={`${r.group}-${r.currency}`} className="border-t border-border">
-              <td className="px-3 py-2.5 font-medium">{r.group}</td><td className="px-3 py-2.5">{r.currency}</td>
-              <td className="px-3 py-2.5 tabular-nums">{r.committed}</td><td className="px-3 py-2.5 tabular-nums">{r.invoiced}</td>
-              <td className="px-3 py-2.5 tabular-nums">{r.paid}</td>
-              <td className="w-40 px-3 py-2.5"><Bar value={Number(r.committed)} max={max} /><div className="mt-1"><Bar value={Number(r.invoiced)} max={max} /></div></td>
-            </tr>))}</tbody>
-        </table></div>
-      )}
+      <DataTable rows={cube.data.rows} rowKey={(r) => `${r.group}-${r.currency}`} noun={["group", "groups"]}
+                 empty="No spend in this period." initialSort={{ key: "committed", dir: "desc" }}
+                 columns={[
+                   { key: "group", header: GROUPS.find(([k]) => k === groupBy)?.[1] ?? "Group", sortValue: (r) => r.group, searchValue: (r) => r.group,
+                     cell: (r) => <span className="font-medium">{r.group}</span> },
+                   { key: "currency", header: "Currency", cell: (r) => r.currency },
+                   { key: "committed", header: "Committed", align: "right", sortValue: (r) => Number(r.committed), cell: (r) => r.committed },
+                   { key: "invoiced", header: "Invoiced", align: "right", sortValue: (r) => Number(r.invoiced), cell: (r) => r.invoiced },
+                   { key: "paid", header: "Paid", align: "right", sortValue: (r) => Number(r.paid), cell: (r) => r.paid },
+                   { key: "bars", header: "Committed · invoiced", className: "w-44",
+                     cell: (r) => <span className="block space-y-1"><Bar value={Number(r.committed)} max={max} /><Bar value={Number(r.invoiced)} max={max} tone="bg-cyan" /></span> },
+                 ]} />
     </div>
   );
 }

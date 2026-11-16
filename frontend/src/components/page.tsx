@@ -1,17 +1,27 @@
 /**
- * Page scaffolding shared by the logged-in screens: title row, notices, empty states, tables.
+ * Page scaffolding shared by the logged-in screens: title row, notices, empty states, panels and the
+ * table classes for small inline tables. Step 41 restyled these for the GoHighLevel-style shell: one
+ * sans typeface, white cards on the ice workspace, light table headers. Lists use DataTable
+ * (components/ui/data-table.tsx); these classes remain for short tables inside a panel.
  */
 import type { ReactNode } from "react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
 
-export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
+export function PageHeader({ title, description, actions, meta }: {
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+  /** A small line above the title, e.g. a back link or the record's reference. */
+  meta?: ReactNode;
+}) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="font-display text-[1.75rem] leading-tight text-heading">{title}</h1>
-        {description ? <p className="mt-1 max-w-[70ch] text-sm text-muted-foreground">{description}</p> : null}
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+      <div className="min-w-0">
+        {meta ? <div className="mb-1.5 text-sm text-muted-foreground">{meta}</div> : null}
+        <h1 className="text-[1.375rem] font-semibold leading-tight tracking-tight text-heading sm:text-2xl">{title}</h1>
+        {description ? <p className="mt-1.5 max-w-[72ch] text-sm leading-relaxed text-muted-foreground">{description}</p> : null}
       </div>
-      {actions ? <div className="flex gap-2">{actions}</div> : null}
+      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   );
 }
@@ -37,7 +47,7 @@ export function Loading({ label = "Loading…" }: { label?: string }) {
 
 export function EmptyState({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed border-border bg-white px-6 py-10 text-center text-sm text-muted-foreground">
+    <div className="rounded-xl border border-dashed border-border bg-white px-6 py-12 text-center text-sm leading-relaxed text-muted-foreground">
       {children}
     </div>
   );
@@ -47,8 +57,8 @@ export function Panel({ title, children, actions }: { title?: string; children: 
   return (
     <section className="rounded-xl border border-border bg-white shadow-raised">
       {title ? (
-        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-heading">{title}</h2>
+        <div className="flex min-h-12 items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+          <h2 className="text-[15px] font-semibold text-heading">{title}</h2>
           {actions}
         </div>
       ) : null}
@@ -57,11 +67,11 @@ export function Panel({ title, children, actions }: { title?: string; children: 
   );
 }
 
-/** Table classes: ice header, thin borders, right-aligned numbers via `num`. */
+/** Classes for a short table inside a panel: light header, hairline rows, right-aligned numbers via `num`. */
 export const table = {
   wrap: "overflow-x-auto rounded-xl border border-border bg-white shadow-raised",
   table: "w-full text-sm",
-  th: "bg-ice px-3 py-2.5 text-left text-xs font-semibold text-heading",
-  td: "border-t border-border px-3 py-2 align-top",
+  th: "whitespace-nowrap border-b border-border bg-ice-light px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground",
+  td: "border-t border-border/70 px-3 py-3 align-top",
   num: "text-right tabular-nums",
 };

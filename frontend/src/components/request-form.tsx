@@ -4,6 +4,11 @@
  * Intake form (BUILD_PLAN §1 step 1, PROMPTS Step 5): category, title, justification, cost centre,
  * needed-by date, optional suggested vendor and lines. Used to create a request and to edit a
  * draft or returned one. The total shown here is a preview; the server computes the real amount.
+ *
+ * Need-first workspaces (Step 42, ADR 0012) get the simpler form an employee actually fills in: what,
+ * how many, by when and why. No vendor, and the price is optional ("if you know it"), because
+ * procurement chooses both after the manager approves the need. Managers and procurement can also
+ * raise a need for an employee who sent it to them on WhatsApp or by email.
  */
 import { useState, type FormEvent } from "react";
 import { Plus, Trash2 } from "lucide-react";
@@ -23,15 +28,26 @@ export interface RequestFormValues {
   cost_center: string;
   needed_by: string | null;
   suggested_vendor_id: string | null;
-  lines: { description: string; qty: string; est_rate: string }[];
+  lines: { description: string; qty: string; est_rate: string; unit?: string }[];
   /** v3.0 intake forms: the type of request and the answers to that type's extra questions. */
   request_type_id?: string | null;
   custom_values?: Record<string, string>;
+  /** Step 42: the employee this need is for, when a manager or procurement types it in. */
+  requested_for_id?: string | null;
 }
 
-const BLANK_LINE = { description: "", qty: "1", est_rate: "" };
+const BLANK_LINE = { description: "", qty: "1", est_rate: "", unit: "" };
 const DECIMAL = /^\d+(\.\d{1,3})?$/;
 const MONEY = /^\d+(\.\d{1,2})?$/;
+const UNITS = ["pcs", "box", "pack", "ream", "kg", "litre", "set", "month"];
+
+/** What the API receives: a price left empty in a need-first form is sent as 0 ("price unknown"). */
+export function toPayload(values: RequestFormValues) {
+  return {
+    ...values,
+    lines: values.lines.map((l) => ({ ...l, est_rate: l.est_rate.trim() || "0", unit: l.unit?.trim() || null })),
+  };
+}
 
 export function RequestForm({
   initial,
@@ -40,6 +56,8 @@ export function RequestForm({
   onSave,
   secondaryLabel,
   onSecondary,
+  needFirst = false,
+  canRaiseForOthers = false,
 }: {
   initial?: RequestDetail;
   /** Step 24: values drafted by the intake agent, for the person to check before saving. */
@@ -48,9 +66,13 @@ export function RequestForm({
   onSave: (values: RequestFormValues) => Promise<void>;
   secondaryLabel?: string;
   onSecondary?: (values: RequestFormValues) => Promise<void>;
+  /** Step 42: the employee states the need; procurement picks vendor and price later. */
+  needFirst?: boolean;
+  /** Step 42: managers, procurement, finance and admins may enter a need for an employee. */
+  canRaiseForOthers?: boolean;
 }) {
   const categories = useApi<Category[]>("/categories");
-  const vendors = useApi<Vendor[]>("/vendors");
+  const vendors = useApi<Vendor[]>(needFirst ? null : "/vendors");
   const [values, setValues] = useState<RequestFormValues>(prefill ?? {
     category_id: initial?.category_id ?? "",
     title: initial?.title ?? "",
@@ -60,34 +82,40 @@ export function RequestForm({
     suggested_vendor_id: initial?.suggested_vendor_id ?? null,
     request_type_id: initial?.request_type_id ?? null,
     custom_values: initial?.custom_values ?? {},
-    lines: initial?.lines.map((l) => ({ description: l.description, qty: l.qty, est_rate: l.est_rate })) ?? [
-      { ...BLANK_LINE },
-    ],
+    requested_for_id: null,
+    lines: initial?.lines.map((l) => ({
+      description: l.description, qty: l.qty, unit: l.unit ?? "",
+      // A need saved without a price comes back as 0.00: show it as empty again.
+      est_rate: needFirst && Number(l.est_rate) === 0 ? "" : l.est_rate,
+    })) ?? [{ ...BLANK_LINE }],
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const requestTypes = useApi<RequestType[]>("/request-types");
   const requestType = requestTypes.data?.find((t) => t.id === values.request_type_id) ?? null;
-  const people = useApi<{ id: string; full_name: string }[]>(requestType?.fields.some((f) => f.kind === "user") ? "/users" : null);
+  const needsPeople = canRaiseForOthers || requestType?.fields.some((f) => f.kind === "user");
+  const people = useApi<{ id: string; full_name: string; role: string }[]>(needsPeople ? "/users" : null);
   const answers = values.custom_values ?? {};
   const setAnswer = (key: string, value: string) =>
     setValues((v) => ({ ...v, custom_values: { ...(v.custom_values ?? {}), [key]: value } }));
 
   const set =<K extends keyof RequestFormValues>(key: K, value: RequestFormValues[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
-  const setLine = (i: number, key: "description" | "qty" | "est_rate", value: string) =>
+  const setLine = (i: number, key: "description" | "qty" | "est_rate" | "unit", value: string) =>
     setValues((v) => ({ ...v, lines: v.lines.map((l, n) => (n === i ? { ...l, [key]: value } : l)) }));
 
-  const total = sumMoney(values.lines.map((l) => lineTotal(l.qty, l.est_rate)));
+  const total = sumMoney(values.lines.map((l) => lineTotal(l.qty, l.est_rate || "0")));
+  const anyPrice = values.lines.some((l) => l.est_rate.trim() !== "" && Number(l.est_rate) > 0);
 
   function validate(): string | null {
-    if (!values.category_id) return "Choose a category.";
-    if (!values.title.trim()) return "Give the request a title.";
+    if (!values.category_id) return needFirst ? "Choose what kind of thing you need." : "Choose a category.";
+    if (!values.title.trim()) return needFirst ? "Say in a few words what you need." : "Give the request a title.";
     const unanswered = requestType?.fields.find((f) => f.required && !(answers[f.key] ?? "").trim());
     if (unanswered) return `${unanswered.label}: this question must be answered.`;
     for (const [i, line] of values.lines.entries()) {
       if (!line.description.trim()) return `Line ${i + 1}: describe the item.`;
       if (!DECIMAL.test(line.qty) || Number(line.qty) <= 0) return `Line ${i + 1}: quantity must be a number above 0.`;
+      if (needFirst && line.est_rate.trim() === "") continue; // the price is optional for a need
       if (!MONEY.test(line.est_rate)) return `Line ${i + 1}: enter the estimated rate in rupees, e.g. 78500 or 78500.50.`;
     }
     return null;
@@ -107,6 +135,10 @@ export function RequestForm({
     }
   }
 
+  const lineGrid = needFirst
+    ? "md:grid-cols-[1fr_6rem_7rem_9rem_2.5rem]"
+    : "md:grid-cols-[1fr_7rem_10rem_9rem_2.5rem]";
+
   return (
     <form
       onSubmit={(e: FormEvent) => {
@@ -116,7 +148,22 @@ export function RequestForm({
       className="flex flex-col gap-6"
     >
       <div className="grid gap-4 rounded-xl border border-border bg-white p-5 md:grid-cols-2">
-        <Field label="Category" htmlFor="category" hint="Decides which buyer handles it.">
+        {canRaiseForOthers && !initial ? (
+          <Field label="Raising this for" htmlFor="requested_for" className="md:col-span-2"
+                 hint="Pick the employee who asked. They get the draft to check and submit themselves.">
+            <Select id="requested_for" value={values.requested_for_id ?? ""}
+                    onChange={(e) => set("requested_for_id", e.target.value || null)}>
+              <option value="">Myself</option>
+              {people.data?.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+            </Select>
+          </Field>
+        ) : null}
+        <Field label={needFirst ? "What do you need? (short title)" : "Title"} htmlFor="title">
+          <Input id="title" required maxLength={200} value={values.title} onChange={(e) => set("title", e.target.value)}
+                 placeholder={needFirst ? "e.g. A4 paper for the Pune office" : "e.g. Laptops for the new analysts"} />
+        </Field>
+        <Field label={needFirst ? "What kind of thing is it?" : "Category"} htmlFor="category"
+               hint={needFirst ? "Tells procurement who orders it." : "Decides which buyer handles it."}>
           <Select id="category" required value={values.category_id} onChange={(e) => set("category_id", e.target.value)}>
             <option value="">Choose…</option>
             {categories.data?.map((c) => (
@@ -124,31 +171,30 @@ export function RequestForm({
             ))}
           </Select>
         </Field>
-        <Field label="Title" htmlFor="title">
-          <Input id="title" required maxLength={200} value={values.title} onChange={(e) => set("title", e.target.value)}
-                 placeholder="e.g. Laptops for the new analysts" />
-        </Field>
-        <Field label="Justification" htmlFor="justification" className="md:col-span-2">
+        <Field label={needFirst ? "Why is it needed?" : "Justification"} htmlFor="justification" className="md:col-span-2">
           <Textarea id="justification" maxLength={4000} value={values.justification}
-                    onChange={(e) => set("justification", e.target.value)} placeholder="Why is this needed?" />
-        </Field>
-        <Field label="Cost centre" htmlFor="cost_center">
-          <Input id="cost_center" maxLength={60} value={values.cost_center}
-                 onChange={(e) => set("cost_center", e.target.value)} placeholder="e.g. FIN-OPS" />
+                    onChange={(e) => set("justification", e.target.value)}
+                    placeholder={needFirst ? "e.g. Monthly stock for the front office" : "Why is this needed?"} />
         </Field>
         <Field label="Needed by" htmlFor="needed_by">
           <Input id="needed_by" type="date" value={values.needed_by ?? ""}
                  onChange={(e) => set("needed_by", e.target.value || null)} />
         </Field>
-        <Field label="Suggested vendor (optional)" htmlFor="vendor" hint="The buyer makes the final choice.">
-          <Select id="vendor" value={values.suggested_vendor_id ?? ""}
-                  onChange={(e) => set("suggested_vendor_id", e.target.value || null)}>
-            <option value="">No suggestion</option>
-            {vendors.data?.map((v) => (
-              <option key={v.id} value={v.id}>{v.name}</option>
-            ))}
-          </Select>
+        <Field label="Cost centre" htmlFor="cost_center" hint={needFirst ? "Your department's budget code, if you know it." : undefined}>
+          <Input id="cost_center" maxLength={60} value={values.cost_center}
+                 onChange={(e) => set("cost_center", e.target.value)} placeholder="e.g. ADMIN" />
         </Field>
+        {needFirst ? null : (
+          <Field label="Suggested vendor (optional)" htmlFor="vendor" hint="The buyer makes the final choice.">
+            <Select id="vendor" value={values.suggested_vendor_id ?? ""}
+                    onChange={(e) => set("suggested_vendor_id", e.target.value || null)}>
+              <option value="">No suggestion</option>
+              {vendors.data?.map((v) => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
       </div>
 
       {requestTypes.data && requestTypes.data.length > 0 ? (
@@ -184,22 +230,42 @@ export function RequestForm({
       ) : null}
 
       <div className="rounded-xl border border-border bg-white p-5">
-        <h2 className="mb-3 text-sm font-semibold text-heading">Items</h2>
+        <h2 className="text-sm font-semibold text-heading">Items</h2>
+        {needFirst ? (
+          <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
+            Say what and how many. Procurement chooses the vendor and the price after your manager approves.
+          </p>
+        ) : <div className="mb-3" />}
         <div className="flex flex-col gap-3">
           {values.lines.map((line, i) => (
-            <div key={i} className="grid items-end gap-3 md:grid-cols-[1fr_7rem_10rem_9rem_2.5rem]">
+            <div key={i} className={`grid items-end gap-3 ${lineGrid}`}>
               <Field label={`Line ${i + 1}: description`} htmlFor={`desc-${i}`}>
                 <Input id={`desc-${i}`} maxLength={300} value={line.description}
+                       placeholder={needFirst ? "e.g. A4 copier paper, 75 gsm" : undefined}
                        onChange={(e) => setLine(i, "description", e.target.value)} />
               </Field>
               <Field label="Qty" htmlFor={`qty-${i}`}>
                 <Input id={`qty-${i}`} inputMode="decimal" value={line.qty} onChange={(e) => setLine(i, "qty", e.target.value)} />
               </Field>
-              <Field label="Est. rate (₹)" htmlFor={`rate-${i}`}>
-                <Input id={`rate-${i}`} inputMode="decimal" value={line.est_rate}
-                       onChange={(e) => setLine(i, "est_rate", e.target.value)} />
-              </Field>
-              <p className="pb-2 text-right text-sm tabular-nums">{formatINR(lineTotal(line.qty, line.est_rate))}</p>
+              {needFirst ? (
+                <Field label="Unit" htmlFor={`unit-${i}`}>
+                  <Input id={`unit-${i}`} list="units" maxLength={20} value={line.unit ?? ""} placeholder="box"
+                         onChange={(e) => setLine(i, "unit", e.target.value)} />
+                </Field>
+              ) : (
+                <Field label="Est. rate (₹)" htmlFor={`rate-${i}`}>
+                  <Input id={`rate-${i}`} inputMode="decimal" value={line.est_rate}
+                         onChange={(e) => setLine(i, "est_rate", e.target.value)} />
+                </Field>
+              )}
+              {needFirst ? (
+                <Field label="Price each, if known (₹)" htmlFor={`rate-${i}`}>
+                  <Input id={`rate-${i}`} inputMode="decimal" value={line.est_rate} placeholder="Optional"
+                         onChange={(e) => setLine(i, "est_rate", e.target.value)} />
+                </Field>
+              ) : (
+                <p className="pb-2 text-right text-sm tabular-nums">{formatINR(lineTotal(line.qty, line.est_rate))}</p>
+              )}
               <Button type="button" variant="ghost" size="icon" aria-label={`Remove line ${i + 1}`}
                       disabled={values.lines.length === 1}
                       onClick={() => setValues((v) => ({ ...v, lines: v.lines.filter((_, n) => n !== i) }))}>
@@ -208,14 +274,18 @@ export function RequestForm({
             </div>
           ))}
         </div>
+        <datalist id="units">{UNITS.map((u) => <option key={u} value={u} />)}</datalist>
         <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
           <Button type="button" variant="outline" size="sm"
                   onClick={() => setValues((v) => ({ ...v, lines: [...v.lines, { ...BLANK_LINE }] }))}>
             <Plus aria-hidden /> Add line
           </Button>
-          <p className="text-sm">
-            Estimated total <span className="ml-2 text-lg font-semibold text-heading tabular-nums">{formatINR(total)}</span>
-          </p>
+          {!needFirst || anyPrice ? (
+            <p className="text-sm">
+              {needFirst ? "Rough total" : "Estimated total"}{" "}
+              <span className="ml-2 text-lg font-semibold text-heading tabular-nums">{formatINR(total)}</span>
+            </p>
+          ) : <p className="text-xs text-muted-foreground">No price needed</p>}
         </div>
       </div>
       <BudgetNotice query={values.cost_center.trim() && total !== "0.00"

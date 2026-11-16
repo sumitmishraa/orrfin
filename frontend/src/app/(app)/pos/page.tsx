@@ -5,11 +5,12 @@
  * a pull job; the page polls the job and reloads the list when it finishes.
  */
 import { useState } from "react";
-import Link from "next/link";
-import { RefreshCw } from "lucide-react";
+import { CircleCheck, Clock, PackageCheck, PauseCircle, RefreshCw } from "lucide-react";
 
 import { ErpBadge } from "@/components/erp-badge";
-import { EmptyState, ErrorNotice, Loading, PageHeader, table } from "@/components/page";
+import { ErrorNotice, PageHeader } from "@/components/page";
+import { DataTable } from "@/components/ui/data-table";
+import { StatusPill, type Tone } from "@/components/ui/display";
 import { useMe } from "@/components/session";
 import { Button } from "@/components/ui/button";
 import { api, post } from "@/lib/api";
@@ -17,13 +18,25 @@ import { formatDate, formatINR, formatQty } from "@/lib/format";
 import type { ActiveErp, Job, PoSummary } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
 
-const PO_STATUS: Record<string, string> = {
-  open: "To receive",
-  to_bill: "Received, to bill",
-  completed: "Completed",
-  closed: "Closed",
-  on_hold: "On hold",
+const PO_STATUS: Record<string, { label: string; tone: Tone; icon: typeof Clock }> = {
+  open: { label: "To receive", tone: "info", icon: Clock },
+  to_bill: { label: "Received, to bill", tone: "warning", icon: PackageCheck },
+  completed: { label: "Completed", tone: "success", icon: CircleCheck },
+  closed: { label: "Closed", tone: "muted", icon: CircleCheck },
+  on_hold: { label: "On hold", tone: "danger", icon: PauseCircle },
 };
+
+function Received({ received, ordered }: { received: string; ordered: string }) {
+  const share = Number(ordered) > 0 ? Math.min(Number(received) / Number(ordered), 1) : 0;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span aria-hidden className="h-1.5 w-16 overflow-hidden rounded-full bg-ice">
+        <span className="block h-full rounded-full bg-brand-blue" style={{ width: `${share * 100}%` }} />
+      </span>
+      <span className="tabular-nums">{formatQty(received)} / {formatQty(ordered)}</span>
+    </span>
+  );
+}
 
 function SyncButton({ onDone }: { onDone: () => void }) {
   const [state, setState] = useState<string | null>(null);
@@ -88,42 +101,27 @@ export default function PurchaseOrdersPage() {
       />
       {erp ? <p className="-mt-4 mb-4"><ErpBadge label={erp.label} suffix={erp.name} /></p> : null}
       <ErrorNotice message={error} />
-      {loading ? (
-        <Loading />
-      ) : !data?.length ? (
-        <EmptyState>No purchase orders yet. {canSync ? "Click “Sync from ERP”." : "Ask a buyer or finance to sync from the ERP."}</EmptyState>
-      ) : (
-        <div className={table.wrap}>
-          <table className={table.table}>
-            <thead>
-              <tr>
-                <th className={table.th}>PO</th>
-                <th className={table.th}>Vendor</th>
-                <th className={table.th}>Date</th>
-                <th className={table.th}>Status</th>
-                <th className={`${table.th} ${table.num}`}>Received / ordered</th>
-                <th className={`${table.th} ${table.num}`}>Grand total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((po) => (
-                <tr key={po.id} className="hover:bg-ice-light">
-                  <td className={table.td}>
-                    <Link href={`/pos/${po.id}`} className="font-medium text-primary hover:underline">{po.erp_ref}</Link>
-                    {po.po_number && po.po_number !== po.erp_ref
-                      ? <span className="block text-xs text-muted-foreground">PO no. {po.po_number}</span> : null}
-                  </td>
-                  <td className={table.td}>{po.vendor_name ?? "—"}</td>
-                  <td className={table.td}>{formatDate(po.po_date)}</td>
-                  <td className={table.td}>{PO_STATUS[po.status] ?? po.status}</td>
-                  <td className={`${table.td} ${table.num}`}>{formatQty(po.qty_received)} / {formatQty(po.qty_ordered)}</td>
-                  <td className={`${table.td} ${table.num} font-medium`}>{formatINR(po.grand_total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable rows={data} loading={loading} rowKey={(po) => po.id} noun={["purchase order", "purchase orders"]}
+                 rowHref={(po) => `/pos/${po.id}`} initialSort={{ key: "date", dir: "desc" }}
+                 empty={canSync ? "No purchase orders yet. Click “Sync from ERP”." : "No purchase orders yet. Ask a buyer or finance to sync from the ERP."}
+                 filters={Object.entries(PO_STATUS).slice(0, 3).map(([key, st]) => ({ key, label: st.label, test: (po: PoSummary) => po.status === key }))}
+                 columns={[
+                   { key: "po", header: "PO", sortValue: (po) => po.erp_ref, searchValue: (po) => `${po.erp_ref} ${po.po_number ?? ""}`,
+                     cell: (po) => (
+                       <span className="block leading-tight">
+                         <span className="font-medium text-primary">{po.erp_ref}</span>
+                         {po.po_number && po.po_number !== po.erp_ref ? <span className="mt-0.5 block text-xs text-muted-foreground">PO no. {po.po_number}</span> : null}
+                       </span>
+                     ) },
+                   { key: "vendor", header: "Vendor", sortValue: (po) => po.vendor_name, searchValue: (po) => po.vendor_name, cell: (po) => po.vendor_name ?? "—" },
+                   { key: "date", header: "Date", sortValue: (po) => po.po_date, cell: (po) => formatDate(po.po_date) },
+                   { key: "status", header: "Status", sortValue: (po) => po.status, cell: (po) => {
+                     const st = PO_STATUS[po.status];
+                     return st ? <StatusPill tone={st.tone} icon={st.icon}>{st.label}</StatusPill> : <StatusPill>{po.status}</StatusPill>;
+                   } },
+                   { key: "received", header: "Received / ordered", align: "right", cell: (po) => <Received received={po.qty_received} ordered={po.qty_ordered} /> },
+                   { key: "total", header: "Grand total", align: "right", sortValue: (po) => Number(po.grand_total), cell: (po) => <span className="font-medium">{formatINR(po.grand_total)}</span> },
+                 ]} />
     </>
   );
 }

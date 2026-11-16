@@ -5,9 +5,11 @@ Every business route depends on `current_user`; every query then filters on
 """
 
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.auth.service import user_for_token
@@ -16,6 +18,8 @@ from app.db import get_session, scope_to_org
 from app.models import User
 
 DbSession = Annotated[Session, Depends(get_session)]
+# The Team page shows "last active"; writing it on every request would be a write per page view.
+LAST_SEEN_EVERY = timedelta(minutes=5)
 
 
 def current_user(request: Request, db: DbSession) -> User:
@@ -23,6 +27,10 @@ def current_user(request: Request, db: DbSession) -> User:
     user = user_for_token(db, token) if token else None
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Please log in.")
+    now = datetime.now(UTC)
+    if user.last_seen_at is None or now - user.last_seen_at > LAST_SEEN_EVERY:
+        db.execute(update(User).where(User.id == user.id).values(last_seen_at=now))
+        db.commit()  # nothing else is pending yet: this runs before the route does any work
     # v3.0 (§9): from here on the database itself only shows this org's rows (row-level security).
     scope_to_org(db, user.org_id)
     return user

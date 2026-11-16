@@ -5,9 +5,9 @@
  * Every number comes from GET /insights/summary, computed by rules on the server, never by AI.
  * Requesters see their own requests only; everyone else also sees invoices, spend and ERP drafts.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Check, ChevronRight, Plus, X } from "lucide-react";
 
 import { useMe } from "@/components/session";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { post } from "@/lib/api";
 import { EmptyState, ErrorNotice, Loading, PageHeader, Panel } from "@/components/page";
 import { BarList, StatGrid, StatTile } from "@/components/stats";
 import { formatINR, ROLE_LABELS } from "@/lib/format";
+import type { ActiveErp, TeamPlan } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
 
 type Period = "month" | "quarter" | "all";
@@ -229,6 +230,84 @@ function ErpDrafts({ rows }: { rows: { doc_type: string; state: string; count: n
   );
 }
 
+const CHECKLIST_KEY = "orrfin.home.checklist.hidden";
+
+/**
+ * Step 41: an admin's first steps, each ticked from real data, never from clicks. Hidden once every
+ * step is done, or when the admin closes it (remembered on this browser only).
+ */
+function GettingStarted({ hasRequests }: { hasRequests: boolean }) {
+  const erp = useApi<ActiveErp>("/connectors/active").data;
+  const plan = useApi<TeamPlan>("/team/plan").data;
+  const entities = useApi<unknown[]>("/entities").data;
+  const [hidden, setHidden] = useState(true);
+
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHidden(window.localStorage.getItem(CHECKLIST_KEY) === "1");
+    } catch {
+      setHidden(false);
+    }
+  }, []);
+
+  const steps = [
+    { label: "Connect your ERP", detail: erp ? `${erp.name} is connected (${erp.mode}).` : "Pick the ERP Orrfin reads POs and vendors from.",
+      href: "/connectors", done: Boolean(erp) },
+    { label: "Invite your team", detail: "Requesters are free. Approvers, buyers and finance use a seat.",
+      href: "/settings/team?invite=1", done: Boolean(plan && (plan.seats_used + plan.requesters > 1 || plan.pending_invites > 0)) },
+    { label: "Add your legal entities", detail: "The companies you buy for, with their tax registration.",
+      href: "/settings/entities", done: Boolean(entities && entities.length > 0) },
+    { label: "Raise the first request", detail: "See approvals, the PO and the invoice check end to end.",
+      href: "/requests/new", done: hasRequests },
+  ];
+  const done = steps.filter((s) => s.done).length;
+  if (hidden || !plan || done === steps.length) return null;
+
+  function close() {
+    setHidden(true);
+    try { window.localStorage.setItem(CHECKLIST_KEY, "1"); } catch { /* hidden for this visit only */ }
+  }
+
+  return (
+    <section className="mb-6 rounded-xl border border-border bg-white shadow-raised" aria-label="Getting started">
+      <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+        <div>
+          <h2 className="text-[15px] font-semibold text-heading">Set up your workspace</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">{done} of {steps.length} done</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span aria-hidden className="hidden h-2 w-32 overflow-hidden rounded-full bg-ice sm:block">
+            <span className="block h-full rounded-full bg-brand-blue" style={{ width: `${(done / steps.length) * 100}%` }} />
+          </span>
+          <button type="button" onClick={close} aria-label="Hide setup steps" className="rounded-md p-1 text-muted-foreground hover:bg-ice hover:text-heading">
+            <X className="size-4" aria-hidden />
+          </button>
+        </div>
+      </div>
+      <ol className="grid divide-y divide-border sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-4">
+        {steps.map((step, i) => (
+          <li key={step.label} className="sm:border-r sm:border-border last:border-r-0">
+            <Link href={step.href} className="group flex h-full gap-3 px-5 py-4 hover:bg-ice-light">
+              <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                step.done ? "bg-success text-white" : "border border-border bg-white text-heading"}`}>
+                {step.done ? <Check className="size-3.5" aria-label="Done" /> : i + 1}
+              </span>
+              <span className="min-w-0">
+                <span className={`flex items-center gap-1 text-sm font-medium ${step.done ? "text-muted-foreground line-through" : "text-heading"}`}>
+                  {step.label}
+                  {step.done ? null : <ChevronRight className="size-3.5 text-muted-foreground group-hover:text-heading" aria-hidden />}
+                </span>
+                <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{step.detail}</span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 export default function HomePage() {
   const me = useMe();
   const [period, setPeriod] = useState<Period>("quarter");
@@ -249,6 +328,9 @@ export default function HomePage() {
         }
       />
       <ErrorNotice message={error} />
+      {me.role === "admin" && data ? (
+        <GettingStarted hasRequests={data.requests.open_total + data.requests.approved_count > 0} />
+      ) : null}
       {loading && !data ? <Loading /> : data ? <Dashboard data={data} /> : null}
     </>
   );

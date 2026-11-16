@@ -144,7 +144,10 @@ def whatsapp_text(kind: str, lines: list[str], path: str) -> str:
     """A WhatsApp-style message. The link is a path; the page adds its own origin."""
     title = {"approval": "Approval needed", "exception_task": "Question about an invoice",
              "answer": "Your question was answered", "invoice": "Invoice waiting for a decision",
-             "buyer": "Request to complete", "returned": "Request returned to you"}.get(kind, "Task")
+             "buyer": "Request to complete", "returned": "Request returned to you",
+             # Step 42 (need-first)
+             "order": "Approved needs to order", "po_approval": "Purchase order to approve",
+             "po_send": "Purchase order ready to send"}.get(kind, "Task")
     return "\n".join([f"*Orrfin* · {title}", *lines, f"Open: {{origin}}{path}",
                       "_You will be asked to log in. Orrfin never approves from chat._"])
 
@@ -170,7 +173,9 @@ def my_tasks(db: Session, user: User) -> list[dict[str, Any]]:
         status = approval_status(db, request)
         requester = db.get(User, request.requested_by)
         title = f"{number(request.number)} · {request.title}"
-        detail = f"{rupees(request.amount)} · step {status['step']}: {status['waiting_on']}"
+        # A need-first request usually has no price yet: the manager approves the need, not an amount.
+        money = rupees(request.amount) if request.amount > 0 else "Need"
+        detail = f"{money} · step {status['step']}: {status['waiting_on']}"
         tasks.append(_task("approval", request.id, title, detail, f"/requests/{request.id}", status["since"],
                            overdue=status["overdue"], nudges=status["nudges"],
                            preview_lines=[title, f"{rupees(request.amount)} · requested by {requester.full_name}",
@@ -178,7 +183,10 @@ def my_tasks(db: Session, user: User) -> list[dict[str, Any]]:
                                           f"Waiting {status['age_hours']} h"
                                           + (" · *overdue*" if status["overdue"] else "")]))
 
-    if user.role == "buyer":
+    need_first = procurement.intake_flow(db, user.org_id) == procurement.NEED_FIRST
+    if need_first:
+        tasks.extend(_ordering_tasks(db, user))
+    if user.role == "buyer" and not need_first:
         for request in db.scalars(select(PurchaseRequest).where(
                 PurchaseRequest.org_id == user.org_id, PurchaseRequest.assigned_buyer_id == user.id,
                 PurchaseRequest.status == "with_buyer")):
@@ -220,6 +228,33 @@ def my_tasks(db: Session, user: User) -> list[dict[str, Any]]:
             tasks.append(task)
 
     tasks.sort(key=lambda t: (not t["overdue"], -(t["age_hours"] or 0)))
+    return tasks
+
+
+def _ordering_tasks(db: Session, user: User) -> list[dict[str, Any]]:
+    """Step 42 (need-first): approved needs to order, POs to approve and approved POs to send."""
+    from app.modules.ordering import service as ordering  # local import: ordering imports procurement
+
+    tasks: list[dict[str, Any]] = []
+    if user.role in ordering.BUILD_ROLES:
+        needs = ordering.open_needs(db, user)
+        if needs:
+            requests = {n["request_id"] for n in needs}
+            oldest = min(n["approved_at"] for n in needs)
+            tasks.append(_task("order", user.id, f"{len(needs)} approved need line{'s' * (len(needs) != 1)} to order",
+                               f"From {len(requests)} request{'s' * (len(requests) != 1)}: choose vendors and prices",
+                               "/orders", oldest))
+        for po in db.scalars(select(ordering.OrderPo).where(ordering.OrderPo.org_id == user.org_id,
+                                                           ordering.OrderPo.status == "approved")):
+            if ordering.send_readiness(db, po).allowed:
+                tasks.append(_task("po_send", po.id, f"{ordering.po_number(po.number)} · {rupees(po.amount)}",
+                                   "Approved: send it to the vendor", f"/orders/{po.id}", po.updated_at))
+    for po in db.scalars(select(ordering.OrderPo).where(ordering.OrderPo.org_id == user.org_id,
+                                                       ordering.OrderPo.status == "in_approval")):
+        step = ordering.next_step_for(db, user, po)
+        if step is not None:
+            tasks.append(_task("po_approval", po.id, f"{ordering.po_number(po.number)} · {rupees(po.amount)}",
+                               f"Step {step}: approve the purchase order", f"/orders/{po.id}", po.updated_at))
     return tasks
 
 

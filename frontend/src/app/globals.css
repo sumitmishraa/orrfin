@@ -15,7 +15,7 @@
 @theme inline {
   --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
-  /* Page titles and area names only (font-display). Never for body text, tables or numbers. */
+  /* Step 41: only the sign-in and join pages use it now; the app itself is set in Hanken Grotesk. */
   --font-display: var(--font-newsreader), Georgia, "Times New Roman", serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
@@ -68,6 +68,10 @@
   --color-heading: var(--orffin-text-blue);
   --color-header-glass: var(--orffin-header-glass);
   --color-cyan-bloom: var(--orffin-cyan-bloom);
+  --color-sidebar-text: var(--orffin-sidebar-text);
+  --color-sidebar-label: var(--orffin-sidebar-label);
+  --color-sidebar-hover: var(--orffin-sidebar-hover);
+  --color-sidebar-active: var(--orffin-sidebar-active);
 
   /* Invoice status colours. Never used alone: always with an icon and a text label (BRAND.md). */
   --color-success: var(--orffin-success);
@@ -129,5 +133,9 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Amounts and counts line up in columns everywhere, without each page asking for it. */
+  td, th, .tabular {
+    font-variant-numeric: tabular-nums;
   }
 }

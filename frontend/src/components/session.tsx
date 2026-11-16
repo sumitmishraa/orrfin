@@ -28,6 +28,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   return <SessionContext.Provider value={me}>{children}</SessionContext.Provider>;
 }
 
+/** The user if a session is loaded, else null: for shared components also drawn outside the app shell. */
+export function useOptionalMe(): Me | null {
+  return useContext(SessionContext);
+}
+
 export function useMe(): Me {
   const me = useContext(SessionContext);
   if (!me) throw new Error("useMe must be used inside SessionProvider");

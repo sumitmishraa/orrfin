@@ -7,9 +7,11 @@
  */
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { Download, Landmark, Send, ShieldAlert, ShieldX } from "lucide-react";
+import { CircleCheck, CircleX, Download, Landmark, Send, ShieldAlert, ShieldX } from "lucide-react";
 
+import { BackLink } from "@/components/detail";
 import { ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
+import { StatusPill } from "@/components/ui/display";
 import { Button } from "@/components/ui/button";
 import { Field, Select, Textarea } from "@/components/ui/field";
 import { api, post } from "@/lib/api";
@@ -60,12 +62,14 @@ export default function PaymentRunPage() {
 
   return (
     <>
-      <PageHeader title={`${run.label} · ${RUN_STATUS[run.status] ?? run.status}`}
-                  description={`Prepared by ${run.prepared_by}${run.approved_by ? ` · approved by ${run.approved_by} on ${formatDateTime(run.approved_at!)}` : ""}. Simulated: no real money moves.`} />
+      <PageHeader meta={<BackLink href="/payments" label="Payments" />} title={run.label}
+                  description={`Prepared by ${run.prepared_by}${run.approved_by ? ` · approved by ${run.approved_by} on ${formatDateTime(run.approved_at!)}` : ""}. Simulated: no real money moves.`}
+                  actions={<StatusPill tone={run.status === "settled" ? "success" : run.status === "partly_failed" ? "danger" : run.status === "submitted" ? "warning" : "info"}>
+                    {RUN_STATUS[run.status] ?? run.status}</StatusPill>} />
       <div className="flex flex-col gap-6">
         <div className="grid gap-3 sm:grid-cols-3">
           {[["Gross", run.total_gross], ["TDS deducted", run.total_tds], ["Net to pay", run.total_net]].map(([label, value]) => (
-            <div key={label} className="rounded-xl border border-border bg-white px-4 py-3">
+            <div key={label} className="rounded-xl border border-border bg-white px-4 py-3 shadow-raised">
               <p className="text-xs text-muted-foreground">{label}</p>
               <p className="text-xl font-semibold tabular-nums text-heading">{formatINR(value)}</p>
             </div>
@@ -89,19 +93,19 @@ export default function PaymentRunPage() {
           <thead><tr>{["Invoice", "Vendor", "Gross", "TDS", "Net", "Risk checks", "Bank result", ""].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr></thead>
           <tbody>{run.lines.map((ln) => (
             <tr key={ln.id}>
-              <td className={table.td}>{ln.invoice_no}</td>
+              <td className={`${table.td} font-medium text-primary`}>{ln.invoice_no}</td>
               <td className={table.td}>{ln.vendor}</td>
               <td className={`${table.td} ${table.num}`}>{formatINR(ln.gross)}</td>
               <td className={`${table.td} ${table.num}`}>{formatINR(ln.tds_amount)}{ln.tds_section ? <span className="block text-xs text-muted-foreground">{ln.tds_section} @ {Number(ln.tds_rate)}%</span> : null}</td>
               <td className={`${table.td} ${table.num} font-medium`}>{formatINR(ln.net)}</td>
               <td className={table.td}>
                 {ln.risk.length ? ln.risk.map((r) => (
-                  <p key={r.code} className={`flex items-start gap-1 text-xs ${r.level === "block" ? "text-error" : "text-warning"}`}>
+                  <p key={r.code} className={`flex items-start gap-1 text-xs ${r.level === "block" ? "text-error" : "text-[#8a5a12]"}`}>
                     {r.level === "block" ? <ShieldX className="mt-0.5 size-3.5 shrink-0" aria-hidden /> : <ShieldAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />}
                     {r.level === "block" ? "Block" : "Hold"}: {r.message}
-                  </p>)) : <span className="text-xs text-success">All checks passed</span>}
+                  </p>)) : <StatusPill tone="success" icon={CircleCheck}>All checks passed</StatusPill>}
               </td>
-              <td className={table.td}>{ln.utr ? <span className="text-success">Paid · UTR {ln.utr}</span> : ln.status === "failed" ? <span className="text-error">Failed: {ln.failure_reason}</span> : "—"}</td>
+              <td className={table.td}>{ln.utr ? <StatusPill tone="success" icon={CircleCheck}>Paid · UTR {ln.utr}</StatusPill> : ln.status === "failed" ? <StatusPill tone="danger" icon={CircleX}>Failed: {ln.failure_reason}</StatusPill> : <span className="text-muted-foreground">—</span>}</td>
               <td className={table.td}>{run.allowed.edit ? <Button size="sm" variant="ghost" onClick={() => void act(() => api<Run>(`/payment-runs/${id}/lines/${ln.id}`, { method: "DELETE" }))}>Remove</Button> : null}</td>
             </tr>))}</tbody>
         </table></div>

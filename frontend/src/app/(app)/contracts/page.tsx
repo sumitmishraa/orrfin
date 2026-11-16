@@ -2,11 +2,12 @@
 
 /** Contracts list and a quick way to start one (BUILD_PLAN change 44). */
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { CircleCheck, CircleDashed, Clock, Plus } from "lucide-react";
 
-import { EmptyState, ErrorNotice, Loading, PageHeader, table } from "@/components/page";
+import { ErrorNotice, PageHeader } from "@/components/page";
+import { DataTable } from "@/components/ui/data-table";
+import { StatusPill } from "@/components/ui/display";
 import { useMe } from "@/components/session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
@@ -21,8 +22,6 @@ export default function ContractsPage() {
   const [title, setTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  if (contracts.loading) return <Loading />;
-  if (contracts.error) return <ErrorNotice message={contracts.error} />;
 
   async function create() {
     try {
@@ -35,23 +34,26 @@ export default function ContractsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Contracts" description="Upload a signed contract; key terms are proposed with the quote they came from, and a person confirms each one." />
-      <ErrorNotice message={error} />
+      <ErrorNotice message={error ?? contracts.error} />
       {["buyer", "finance", "admin"].includes(me.role) ? (
-        <div className="flex max-w-xl gap-2">
+        <div className="flex max-w-xl gap-2 rounded-xl border border-border bg-white p-3 shadow-raised">
           <Input aria-label="New contract title" placeholder="e.g. Office chairs supply 2027" value={title} onChange={(e) => setTitle(e.target.value)} />
           <Button onClick={create} disabled={!title.trim()}><Plus aria-hidden /> New contract</Button>
         </div>
       ) : null}
-      {(contracts.data ?? []).length === 0 ? <EmptyState>No contracts yet.</EmptyState> : (
-        <div className={table.wrap}><table className={table.table}>
-          <thead><tr>{["Contract", "Status", "Ends"].map((h) => <th key={h} className={table.th}>{h}</th>)}</tr></thead>
-          <tbody>{contracts.data?.map((c) => (
-            <tr key={c.id} className="border-t border-border">
-              <td className="px-3 py-2.5"><Link href={`/contracts/${c.id}`} className="font-medium text-heading hover:underline">{c.title}</Link></td>
-              <td className="px-3 py-2.5 capitalize">{c.status}</td><td className="px-3 py-2.5">{c.end_date ? formatDate(c.end_date) : "–"}</td>
-            </tr>))}</tbody>
-        </table></div>
-      )}
+      <DataTable rows={contracts.data} loading={contracts.loading} rowKey={(c) => c.id} noun={["contract", "contracts"]}
+                 rowHref={(c) => `/contracts/${c.id}`} empty="No contracts yet."
+                 filters={[{ key: "active", label: "Active", test: (c) => c.status === "active" },
+                           { key: "draft", label: "Draft", test: (c) => c.status === "draft" }]}
+                 columns={[
+                   { key: "title", header: "Contract", sortValue: (c) => c.title, searchValue: (c) => c.title,
+                     cell: (c) => <span className="font-medium text-primary">{c.title}</span> },
+                   { key: "status", header: "Status", sortValue: (c) => c.status,
+                     cell: (c) => <StatusPill tone={c.status === "active" ? "success" : c.status === "draft" ? "muted" : "warning"}
+                                              icon={c.status === "active" ? CircleCheck : c.status === "draft" ? CircleDashed : Clock}>
+                                    <span className="capitalize">{c.status}</span></StatusPill> },
+                   { key: "ends", header: "Ends", sortValue: (c) => c.end_date, cell: (c) => (c.end_date ? formatDate(c.end_date) : "—") },
+                 ]} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 /**
- * The app's navigation map (BUILD_PLAN v3.0 change 37): product areas shown in the rail, and the
- * pages inside each area. The shell, the breadcrumb and the command palette all read this one list.
+ * The app's navigation map (BUILD_PLAN v3.0 change 37, reshaped in Step 41): product areas are the
+ * sidebar entries, grouped into sections; the pages inside an area are the tabs across the top of the
+ * page (GoHighLevel style). The shell, the tabs and the command palette all read this one list.
  *
  * `roles` only decides what a person is shown. The API refuses every call a role may not make
  * (BUILD_PLAN §9), so hiding a link here is a convenience, never a permission.
@@ -8,9 +9,9 @@
  * do not exist yet.
  */
 import {
-  ArrowLeftRight, BadgeCheck, Bell, Building2, Cable, CalendarCheck, FilePlus2, FileText, Gauge, Inbox,
+  ArrowLeftRight, BadgeCheck, Bell, Building2, Cable, CalendarCheck, FileText, Gauge, Inbox,
   Landmark, ListChecks, Package, Receipt, ScrollText, Settings, ShieldCheck, ShoppingCart, SlidersHorizontal,
-  Wallet, Workflow, type LucideIcon,
+  UserCog, Users, Wallet, Workflow, PackagePlus, type LucideIcon,
 } from "lucide-react";
 
 import type { Role } from "@/lib/types";
@@ -23,10 +24,23 @@ export interface NavItem {
   roles?: Role[];
   /** Shows the live count of the user's open tasks next to the label. */
   showsTaskCount?: boolean;
+  /** Step 42: shown only in workspaces that use this intake flow. Left out = every workspace. */
+  flow?: "need_first" | "buyer_first";
 }
+
+export type NavSection = "main" | "operate" | "govern" | "admin";
+
+/** Sidebar section headings, in order. Settings ("admin") sits at the bottom of the sidebar. */
+export const NAV_SECTIONS: { key: NavSection; label: string }[] = [
+  { key: "main", label: "Main" },
+  { key: "operate", label: "Procure to pay" },
+  { key: "govern", label: "Control" },
+  { key: "admin", label: "Workspace" },
+];
 
 export interface NavArea {
   key: string;
+  section: NavSection;
   label: string;
   /** One line under the area name in the side panel, saying what the area is for. */
   summary: string;
@@ -39,9 +53,9 @@ const ADMIN: Role[] = ["admin"];
 
 export const NAV_AREAS: NavArea[] = [
   {
-    key: "home", label: "Home", summary: "What needs you today", icon: Gauge,
+    key: "home", section: "main", label: "Dashboard", summary: "What needs you today", icon: Gauge,
     items: [
-      { href: "/home", label: "Dashboard", icon: Gauge },
+      { href: "/home", label: "Overview", icon: Gauge },
       { href: "/tasks", label: "My tasks", icon: Bell, showsTaskCount: true },
       { href: "/inbox", label: "Inbox", icon: Inbox },
       { href: "/notifications", label: "Notifications", icon: Bell },
@@ -49,16 +63,17 @@ export const NAV_AREAS: NavArea[] = [
     ],
   },
   {
-    key: "procure", label: "Procure", summary: "From a request to a purchase order", icon: ShoppingCart,
+    key: "procure", section: "operate", label: "Procure", summary: "From a request to a purchase order", icon: ShoppingCart,
     items: [
       { href: "/requests", label: "Requests", icon: ListChecks },
-      { href: "/requests/new", label: "New request", icon: FilePlus2 },
-      { href: "/pos", label: "Purchase orders", icon: Package },
+      // Step 42: procurement turns approved needs into POs (need-first workspaces only).
+      { href: "/orders", label: "Orders", icon: PackagePlus, roles: ["buyer", "approver", "finance", "admin"], flow: "need_first" },
+      { href: "/pos", label: "ERP purchase orders", icon: Package },
       { href: "/vendors", label: "Vendors", icon: Building2 },
     ],
   },
   {
-    key: "pay", label: "Pay", summary: "From an invoice to a reconciled payment", icon: Wallet,
+    key: "pay", section: "operate", label: "Pay", summary: "From an invoice to a reconciled payment", icon: Wallet,
     items: [
       { href: "/invoices", label: "Invoices", icon: FileText },
       { href: "/payments", label: "Payments", icon: Landmark, roles: FINANCE },
@@ -69,7 +84,7 @@ export const NAV_AREAS: NavArea[] = [
     ],
   },
   {
-    key: "controls", label: "Controls", summary: "The rules, and the proof they ran", icon: ShieldCheck,
+    key: "controls", section: "govern", label: "Controls", summary: "The rules, and the proof they ran", icon: ShieldCheck,
     items: [
       { href: "/rules", label: "Rules", icon: SlidersHorizontal },
       { href: "/audit", label: "Audit trail", icon: ScrollText },
@@ -77,20 +92,20 @@ export const NAV_AREAS: NavArea[] = [
     ],
   },
   {
-    key: "suppliers", label: "Suppliers", summary: "Onboard and check who you buy from", icon: Building2,
+    key: "suppliers", section: "operate", label: "Suppliers", summary: "Onboard and check who you buy from", icon: Building2,
     items: [
       { href: "/suppliers", label: "Onboarding", icon: Building2, roles: ["buyer", "approver", "finance", "admin"] },
     ],
   },
   {
-    key: "source", label: "Source", summary: "Quotes, awards and contracts", icon: ScrollText,
+    key: "source", section: "operate", label: "Source", summary: "Quotes, awards and contracts", icon: ScrollText,
     items: [
       { href: "/sourcing", label: "Sourcing (RFQs)", icon: ListChecks, roles: ["buyer", "approver", "finance", "admin"] },
       { href: "/contracts", label: "Contracts", icon: ScrollText, roles: ["buyer", "approver", "finance", "admin"] },
     ],
   },
   {
-    key: "automation", label: "Automate", summary: "Who must approve what, and when", icon: Workflow,
+    key: "automation", section: "govern", label: "Automate", summary: "Who must approve what, and when", icon: Workflow,
     items: [
       { href: "/automation/workflows", label: "Approval workflow", icon: Workflow, roles: ADMIN },
       { href: "/app-studio", label: "App Studio", icon: SlidersHorizontal },
@@ -98,20 +113,23 @@ export const NAV_AREAS: NavArea[] = [
     ],
   },
   {
-    key: "settings", label: "Settings", summary: "Systems Orrfin is connected to", icon: Settings,
+    key: "settings", section: "admin", label: "Settings", summary: "Your profile, your team and connected systems", icon: Settings,
     items: [
-      { href: "/connectors", label: "Connectors", icon: Cable, roles: ADMIN },
+      { href: "/settings", label: "Profile & security", icon: UserCog },
+      { href: "/settings/team", label: "Team & roles", icon: Users, roles: ADMIN },
       { href: "/settings/entities", label: "Legal entities", icon: Building2, roles: FINANCE },
       { href: "/settings/forms", label: "Request forms", icon: ListChecks, roles: ADMIN },
+      { href: "/connectors", label: "ERP connectors", icon: Cable, roles: ADMIN },
       { href: "/settings/integrations", label: "API & webhooks", icon: Cable },
     ],
   },
 ];
 
 /** The areas and pages this role is shown; an area with no visible page is dropped. */
-export function navigationFor(role: Role): NavArea[] {
+export function navigationFor(role: Role, flow: "need_first" | "buyer_first" = "buyer_first"): NavArea[] {
   return NAV_AREAS
-    .map((area) => ({ ...area, items: area.items.filter((item) => !item.roles || item.roles.includes(role)) }))
+    .map((area) => ({ ...area, items: area.items.filter((item) =>
+      (!item.roles || item.roles.includes(role)) && (!item.flow || item.flow === flow)) }))
     .filter((area) => area.items.length > 0);
 }
 

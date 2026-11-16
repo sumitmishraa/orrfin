@@ -1,7 +1,13 @@
 """Intake-to-procure workflow: requests, routing, approval chain, segregation of duties (BUILD_PLAN §1, §9).
 
-Lifecycle:  draft → (submit) → with_buyer | submitted (admin queue) → (buyer sends) → in_approval
-            → approved | rejected | returned (requester edits and resubmits).
+Two lifecycles, chosen per org (`orgs.intake_flow`, Step 42, ADR 0012):
+
+buyer_first:  draft → (submit) → with_buyer | submitted (admin queue) → (buyer prices it, sends) → in_approval
+              → approved → (ERP draft PO) po_drafted → po_open;  or rejected | returned (requester resubmits).
+need_first:   draft → (submit) → in_approval (the requester's manager approves the *need*; no vendor or price)
+              → with_buyer ("with procurement") → po_drafted (all lines on an Orrfin PO, modules/ordering)
+              → po_open (the PO was sent to the vendor);  or rejected | returned.
+              Procurement prices needs on a PO, and the PO has its own amount-based approval.
 Every function here locks the request row, checks the rules, changes state and writes
 exactly one audit event, all in the caller's transaction (the router commits). A refused
 action raises before anything is written, so it leaves no trace but the error.
@@ -22,6 +28,7 @@ from app.errors import Conflict, DomainError, Forbidden, Invalid, NotFound
 from app.models import (
     ApprovalPolicy,
     Category,
+    Org,
     PurchaseRequest,
     RequestApproval,
     RequestLine,
@@ -50,6 +57,14 @@ class LineInput:
     qty: Decimal
     est_rate: Decimal
     hsn: str | None = None
+    unit: str | None = None
+
+
+NEED_FIRST = "need_first"
+
+
+def intake_flow(db: Session, org_id: uuid.UUID) -> str:
+    return db.scalar(select(Org.intake_flow).where(Org.id == org_id)) or "buyer_first"
 
 
 @dataclass
@@ -123,7 +138,7 @@ def _replace_lines(db: Session, request: PurchaseRequest, lines: list[LineInput]
         total += amount
         db.add(RequestLine(org_id=request.org_id, request_id=request.id, line_no=number,
                            description=line.description.strip(), qty=line.qty, est_rate=line.est_rate,
-                           amount=amount, hsn=line.hsn))
+                           amount=amount, hsn=line.hsn, unit=(line.unit or "").strip() or None))
     request.amount = total
 
 
@@ -141,8 +156,25 @@ def create_request(db: Session, user: User, *, category_id: uuid.UUID, title: st
                    cost_center: str, needed_by: date | None, lines: list[LineInput],
                    suggested_vendor_id: uuid.UUID | None = None,
                    ai_draft: dict | None = None, request_type_id: uuid.UUID | None = None,
-                   custom_values: dict | None = None) -> PurchaseRequest:
+                   custom_values: dict | None = None, source_channel: str = "form",
+                   source_message: str | None = None,
+                   requested_for_id: uuid.UUID | None = None) -> PurchaseRequest:
+    """Create a draft. `requested_for_id` (Step 42): a manager or procurement types in a need an employee
+    sent them on WhatsApp or by email. The draft belongs to the employee, who checks and submits it, so
+    the person asking is still the requester and segregation of duties is unchanged."""
     _category(db, user, category_id)
+    requester_id, entered_by_id = user.id, None
+    if requested_for_id is not None and requested_for_id != user.id:
+        if user.role not in ORG_WIDE_VIEWERS:
+            raise Forbidden("Only a manager, procurement, finance or an admin can raise a request for someone else.")
+        employee = db.scalar(select(User).where(User.id == requested_for_id, User.org_id == user.org_id,
+                                                User.active))
+        if employee is None:
+            raise Invalid("Choose the person this request is for from the list.")
+        requester_id, entered_by_id = employee.id, user.id
+    message = (source_message or "").strip() or None
+    if source_channel != "form" and message is None:
+        raise Invalid("Paste the WhatsApp or email message the request came in.")
     answers = _form_answers(db, user.org_id, request_type_id, custom_values)
     if suggested_vendor_id and db.scalar(select(Vendor.id).where(
             Vendor.id == suggested_vendor_id, Vendor.org_id == user.org_id)) is None:
@@ -150,20 +182,27 @@ def create_request(db: Session, user: User, *, category_id: uuid.UUID, title: st
     number = (db.scalar(select(func.max(PurchaseRequest.number))
                         .where(PurchaseRequest.org_id == user.org_id)) or 0) + 1
     request = PurchaseRequest(
-        id=uuid.uuid4(), org_id=user.org_id, number=number, requested_by=user.id, category_id=category_id,
+        id=uuid.uuid4(), org_id=user.org_id, number=number, requested_by=requester_id, category_id=category_id,
         title=title.strip(), justification=justification.strip(), cost_center=cost_center.strip(),
         needed_by=needed_by, suggested_vendor_id=suggested_vendor_id, status="draft",
         request_type_id=request_type_id, custom_values=answers,
+        source_channel=source_channel, source_message=message, entered_by_id=entered_by_id,
     )
     db.add(request)
     db.flush()
     _replace_lines(db, request, lines)
-    payload = {"amount": request.amount}
+    payload = {"amount": request.amount, "source_channel": source_channel}
+    if entered_by_id:
+        payload["entered_for"] = requester_id
     if ai_draft:
         # Step 24: the intake agent pre-filled the form; the requester checked and submitted it.
         payload.update({"drafted_by_ai": True, "model_id": ai_draft.get("model_id"),
                         "prompt_version": ai_draft.get("prompt_version")})
     _audit(db, request, user, "created", payload)
+    if entered_by_id:
+        notify(db, org_id=request.org_id, user_id=requester_id, kind="request_entered_for_you",
+               title=f"PR-{request.number:04d}: {user.full_name} entered your request",
+               body=f"From your {source_channel} message. Check it and submit it.", link=f"/requests/{request.id}")
     return request
 
 
@@ -196,7 +235,8 @@ def edit_request(db: Session, user: User, request_id: uuid.UUID, *, title: str |
 
 
 def submit_request(db: Session, user: User, request_id: uuid.UUID) -> PurchaseRequest:
-    """Route to the category's buyer (§9); a category with no buyer goes to the admin queue."""
+    """buyer_first: route to the category's buyer (§9); a category with no buyer goes to the admin queue.
+    need_first: start the need's approval chain (the requester's manager first)."""
     request = load_request(db, user, request_id, lock=True)
     if request.requested_by != user.id:
         raise Forbidden("Only the requester can submit this request.")
@@ -205,6 +245,14 @@ def submit_request(db: Session, user: User, request_id: uuid.UUID) -> PurchaseRe
     if not request.title:
         raise Invalid("Give the request a title.")
     category = db.get(Category, request.category_id)
+    if intake_flow(db, request.org_id) == NEED_FIRST:
+        # The category's buyer will own the approved need; the manager approves first.
+        request.assigned_buyer_id, request.status = category.buyer_id, "in_approval"
+        steps = _start_chain(db, request)
+        _audit(db, request, user, "submitted", {"routed_to": "approval", "steps": steps, "category": category.name,
+                                                "round": request.approval_round})
+        _notify_next_approver(db, request)
+        return request
     if category.buyer_id:
         request.assigned_buyer_id, request.status = category.buyer_id, "with_buyer"
     else:
@@ -248,7 +296,7 @@ CATEGORY_STEP = "category_reviewer"
 
 def chain_preview(db: Session, org_id: uuid.UUID, category_id: uuid.UUID | None, amount: Decimal, *,
                   cost_center: str | None = None, currency: str = "INR", request_type: str | None = None,
-                  answers: dict[str, str] | None = None) -> list[dict]:
+                  answers: dict[str, str] | None = None, requester_id: uuid.UUID | None = None) -> list[dict]:
     """The steps a request of this amount and category would need, in order (no side effects).
 
     If the org has published a "request-approval" workflow (v3.0, ADR 0010), its definition
@@ -266,7 +314,16 @@ def chain_preview(db: Session, org_id: uuid.UUID, category_id: uuid.UUID | None,
             # Intake-form answers (v3.0), addressed in a workflow rule as "custom.<key>".
             **{f"custom.{key}": value for key, value in (answers or {}).items()},
         })
-    steps = [{"role": role, "label": None, "approver_id": None} for role in _policy_steps(db, org_id, amount)]
+    if intake_flow(db, org_id) == NEED_FIRST:
+        # Step 42: the need is approved by the requester's manager. Spending limits are applied later,
+        # to the PO procurement builds (modules/ordering). A requester with no manager goes to an admin,
+        # so a need can never wait on a step nobody may decide.
+        requester = db.get(User, requester_id) if requester_id else None
+        first = "admin" if requester is not None and requester.manager_id is None else "manager"
+        steps = [{"role": first, "label": None, "approver_id": None}]
+    else:
+        steps = [{"role": role, "label": None, "approver_id": None}
+                 for role in _policy_steps(db, org_id, amount)]
     if category is not None and category.extra_approver_id is not None:
         steps.append({"role": CATEGORY_STEP, "label": category.extra_step_label or f"{category.name} review",
                       "approver_id": category.extra_approver_id})
@@ -282,7 +339,8 @@ def _start_chain(db: Session, request: PurchaseRequest) -> list[str]:
     request_type = db.get(RequestType, request.request_type_id) if request.request_type_id else None
     steps = chain_preview(db, request.org_id, request.category_id, request.amount,
                           cost_center=request.cost_center, currency=request.currency,
-                          request_type=request_type.key if request_type else None, answers=request.custom_values)
+                          request_type=request_type.key if request_type else None, answers=request.custom_values,
+                          requester_id=request.requested_by)
     request.approval_round += 1
     for number, step in enumerate(steps, start=1):
         db.add(RequestApproval(org_id=request.org_id, request_id=request.id, round=request.approval_round,
@@ -297,6 +355,7 @@ def buyer_update(db: Session, user: User, request_id: uuid.UUID, *, vendor_id: u
     """The buyer sets vendor, item codes and rates. If the amount changes during approval,
     the chain restarts (§9): approvals given for the old amount no longer count."""
     request = load_request(db, user, request_id, lock=True)
+    _refuse_in_need_first(db, request)
     if request.assigned_buyer_id != user.id:
         raise Forbidden("Only the buyer assigned to this request can complete it.")
     if request.status not in BUYER_EDITABLE:
@@ -329,8 +388,14 @@ def buyer_update(db: Session, user: User, request_id: uuid.UUID, *, vendor_id: u
     return request
 
 
+def _refuse_in_need_first(db: Session, request: PurchaseRequest) -> None:
+    if intake_flow(db, request.org_id) == NEED_FIRST:
+        raise Conflict("In this workspace procurement prices approved needs on a purchase order (Orders page).")
+
+
 def send_for_approval(db: Session, user: User, request_id: uuid.UUID) -> PurchaseRequest:
     request = load_request(db, user, request_id, lock=True)
+    _refuse_in_need_first(db, request)
     if request.assigned_buyer_id != user.id:
         raise Forbidden("Only the buyer assigned to this request can send it for approval.")
     if request.status != "with_buyer":
@@ -411,6 +476,13 @@ def decide(db: Session, user: User, request_id: uuid.UUID, step_number: int, dec
     elif decision == "return":
         request.status = "returned"
         _audit(db, request, user, "returned", payload)
+    elif all(s.decision == "approve" for s in steps) and intake_flow(db, request.org_id) == NEED_FIRST:
+        # Step 42: the need is approved; procurement now chooses the vendor and price on a PO.
+        request.status = "with_buyer"
+        _audit(db, request, user, "need_approved", payload)
+        if request.assigned_buyer_id:
+            notify(db, org_id=request.org_id, user_id=request.assigned_buyer_id, kind="need_approved",
+                   title=f"PR-{request.number:04d} is ready to order", body=request.title, link="/orders")
     elif all(s.decision == "approve" for s in steps):
         request.status = "approved"
         _audit(db, request, user, "approved", payload)
@@ -418,19 +490,40 @@ def decide(db: Session, user: User, request_id: uuid.UUID, step_number: int, dec
         queue_po(db, request, user.id)
     else:
         _audit(db, request, user, "step_approved", payload)
+        _notify_next_approver(db, request)
     if request.status != "in_approval":
         _announce_outcome(db, request, reason)
     return request
 
 
+def _notify_next_approver(db: Session, request: PurchaseRequest) -> None:
+    """Need-first only: tell the person the next step waits on (bell + console email)."""
+    if intake_flow(db, request.org_id) != NEED_FIRST:
+        return
+    step = next((s for s in current_steps(db, request) if s.decision is None), None)
+    if step is None:
+        return
+    target = None
+    if step.required_role == "manager":
+        target = db.scalar(select(User.manager_id).where(User.id == request.requested_by))
+    elif step.required_role == CATEGORY_STEP:
+        target = step.designated_approver_id
+    if target is not None:
+        notify(db, org_id=request.org_id, user_id=target, kind="need_to_approve",
+               title=f"PR-{request.number:04d} needs your approval", body=request.title,
+               link=f"/requests/{request.id}")
+
+
 def _announce_outcome(db: Session, request: PurchaseRequest, reason: str | None) -> None:
     """Tell the requester (bell + email) and any subscribed system that the request left approval."""
     label = f"PR-{request.number:04d}"
+    outcome = {"with_buyer": "approved and is with procurement"}.get(request.status, request.status)
     notify(db, org_id=request.org_id, user_id=request.requested_by, kind=f"request_{request.status}",
-           title=f"{label} was {request.status}", body=reason or request.title, link=f"/requests/{request.id}")
-    if request.status in ("approved", "rejected"):
-        emit_webhook(db, request.org_id, f"request.{request.status}",
-                     {"request_id": request.id, "number": label, "status": request.status,
+           title=f"{label} was {outcome}", body=reason or request.title, link=f"/requests/{request.id}")
+    if request.status in ("approved", "rejected", "with_buyer"):
+        event = "approved" if request.status == "with_buyer" else request.status
+        emit_webhook(db, request.org_id, f"request.{event}",
+                     {"request_id": request.id, "number": label, "status": event,
                       "amount": request.amount, "currency": request.currency})
 
 

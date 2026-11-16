@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CircleAlert, CircleCheck, CircleX, Info, Network, RotateCcw, Sparkles, TriangleAlert } from "lucide-react";
 
+import { BackLink } from "@/components/detail";
 import { ErpSyncPanel } from "@/components/erp-sync-panel";
 import { InvoiceStatus } from "@/components/invoice-status";
 import { QuestionsPanel } from "@/components/questions-panel";
@@ -250,6 +251,7 @@ export default function InvoicePage() {
   return (
     <>
       <PageHeader
+        meta={<BackLink href="/invoices" label="Invoices" />}
         title={invoice.invoice_no ?? invoice.filename}
         description={`${invoice.vendor_name ?? "Vendor not read yet"} · uploaded by ${invoice.uploaded_by_name}${invoice.confirmed_by_name ? ` · confirmed by ${invoice.confirmed_by_name}` : ""}`}
         actions={
@@ -261,6 +263,23 @@ export default function InvoicePage() {
           </div>
         }
       />
+      <dl className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {[
+          { label: "Total", value: formatINR(invoice.total), strong: true },
+          { label: "Tax", value: invoice.tax_regime === "ae_vat" ? formatINR(invoice.vat)
+            : formatINR(invoice.igst && invoice.igst !== "0.00" ? invoice.igst : invoice.cgst && invoice.sgst ? String((Number(invoice.cgst) + Number(invoice.sgst)).toFixed(2)) : null) },
+          { label: "At risk", value: invoice.amount_at_risk && invoice.amount_at_risk !== "0.00" ? formatINR(invoice.amount_at_risk) : "None", danger: Boolean(invoice.amount_at_risk && invoice.amount_at_risk !== "0.00") },
+          { label: "PO", value: invoice.po_reference ?? "—", mono: true },
+          { label: "Entity", value: invoice.entity_name ?? "—" },
+        ].map((k) => (
+          <div key={k.label} className="rounded-xl border border-border bg-white px-4 py-3 shadow-raised">
+            <dt className="text-xs text-muted-foreground">{k.label}</dt>
+            <dd className={`mt-0.5 truncate ${k.strong ? "text-lg font-semibold text-heading" : "text-sm font-medium"} ${k.danger ? "text-error" : ""} ${k.mono ? "font-mono text-xs" : ""}`}>
+              {k.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
       {invoice.extraction?.simulated ? (
         <p className="mb-4 rounded-lg border border-border bg-ice px-3 py-2 text-sm text-heading">
           Simulated reading: these fields come from the evaluation answer key (AI_PROVIDER=fake), not from an AI model.
@@ -300,10 +319,13 @@ export default function InvoicePage() {
           ) : null}
           <ErpSyncPanel sync={invoice.erp_sync} note={invoice.erp_sync_note} what="bill" onChange={() => void reload()} />
           <Panel title="History">
-            <ol className="flex flex-col gap-2 text-sm">
+            <ol className="relative space-y-3 border-l border-border pl-5 text-sm">
               {invoice.timeline.map((e) => (
-                <li key={e.seq}><span className="font-medium text-heading">{e.action.replaceAll("_", " ")}</span>
-                  <span className="text-muted-foreground"> · {e.actor_name ?? "System"} · {formatDateTime(e.at)}</span></li>
+                <li key={e.seq} className="relative">
+                  <span aria-hidden className="absolute -left-[25px] top-1.5 size-2.5 rounded-full border-2 border-white bg-brand-bright ring-1 ring-border" />
+                  <p className="font-medium capitalize text-heading">{e.action.replaceAll("_", " ")}</p>
+                  <p className="text-xs text-muted-foreground">{e.actor_name ?? "System"} · {formatDateTime(e.at)}</p>
+                </li>
               ))}
             </ol>
             {invoice.edits.length ? (

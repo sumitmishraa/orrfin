@@ -5,12 +5,18 @@
  * → approved), the actions this user may take right now, and the audit trail.
  * Which buttons appear comes from `allowed`, computed by the server with the same rules that
  * enforce the action (BUILD_PLAN §9), so the page never offers a click the server would refuse.
+ *
+ * Need-first workspaces (Step 42, ADR 0012) show the need's own journey instead: submitted → manager
+ * approved → with procurement → on a PO → ordered, the WhatsApp or email message it came from, and which
+ * purchase order each line is on.
  */
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   Check,
+  Mail,
+  MessageCircle,
   Network,
   CircleCheck,
   CircleDot,
@@ -21,12 +27,14 @@ import {
   UserPlus,
 } from "lucide-react";
 
+import { AsideCard, BackLink, Chain, DetailLayout, type ChainStep } from "@/components/detail";
 import { ErpSyncPanel } from "@/components/erp-sync-panel";
 import { BudgetNotice, RemindersPanel, stepName } from "@/components/workflow";
 import { EmptyState, ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
-import { RequestForm } from "@/components/request-form";
+import { RequestForm, toPayload } from "@/components/request-form";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { MetaList, PersonCell } from "@/components/ui/display";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { patch, post } from "@/lib/api";
 import {
@@ -53,11 +61,40 @@ const ACTION_LABELS: Record<string, string> = {
   approved: "Final approval: ready for PO",
   rejected: "Rejected",
   returned: "Returned to requester",
+  // Step 42 (need-first)
+  need_approved: "Manager approved the need: with procurement",
+  placed_on_po: "Put on a purchase order",
+  order_status_changed: "Updated from its purchase order",
 };
+
+const isNeedFirst = (request: RequestDetail) => request.intake_flow === "need_first";
 
 // --- Status timeline -------------------------------------------------------------------------------
 
+function NeedStages({ request }: { request: RequestDetail }) {
+  const s = request.status;
+  const stages: { label: string; state: "done" | "current" | "todo" | "stopped" }[] = [
+    { label: "Submitted", state: s === "draft" ? "current" : "done" },
+  ];
+  const firstPending = request.current_steps.find((st) => st.decision === null)?.step;
+  const steps = request.current_steps.length
+    ? request.current_steps
+    : [{ step: 1, required_role: "manager", decision: null } as RequestDetail["current_steps"][number]];
+  for (const st of steps) {
+    let state: "done" | "current" | "todo" | "stopped" = "todo";
+    if (st.decision === "approve") state = "done";
+    else if (st.decision === "reject" || st.decision === "return") state = "stopped";
+    else if (s === "in_approval" && st.step === firstPending) state = "current";
+    stages.push({ label: st.required_role === "manager" ? "Manager approves" : stepName(st), state });
+  }
+  stages.push({ label: "With procurement", state: s === "with_buyer" ? "current" : ["po_drafted", "po_open"].includes(s) ? "done" : "todo" });
+  stages.push({ label: "On a PO", state: s === "po_drafted" ? "current" : s === "po_open" ? "done" : "todo" });
+  stages.push({ label: "Ordered", state: s === "po_open" ? "done" : "todo" });
+  return <StageList stages={stages} />;
+}
+
 function StageTimeline({ request }: { request: RequestDetail }) {
+  if (isNeedFirst(request)) return <NeedStages request={request} />;
   const s = request.status;
   const submittedDone = !["draft"].includes(s);
   const buyerDone = ["in_approval", "approved", "rejected", "po_drafted", "po_open"].includes(s);
@@ -77,7 +114,10 @@ function StageTimeline({ request }: { request: RequestDetail }) {
     stages.push({ label: `Step ${st.step}: ${stepName(st)}`, state });
   }
   stages.push({ label: "Approved", state: ["approved", "po_drafted", "po_open"].includes(s) ? "done" : "todo" });
+  return <StageList stages={stages} />;
+}
 
+function StageList({ stages }: { stages: { label: string; state: "done" | "current" | "todo" | "stopped" }[] }) {
   return (
     <ol aria-label="Progress" className="flex flex-wrap items-center gap-2">
       {stages.map((stage, i) => (
@@ -110,16 +150,77 @@ function StageTimeline({ request }: { request: RequestDetail }) {
 
 // --- Panels ------------------------------------------------------------------------------------------
 
-function Detail({ label, children }: { label: string; children: ReactNode }) {
+function chainSteps(request: RequestDetail): ChainStep[] {
+  const firstOpen = request.current_steps.find((s) => s.decision === null)?.step;
+  return request.current_steps.map((s) => ({
+    key: s.step,
+    label: `Step ${s.step}: ${stepName(s)}`,
+    person: s.decision === null ? undefined
+      : `${s.decision === "approve" ? "Approved" : s.decision === "reject" ? "Rejected" : "Returned"} by ${s.approver_name}`,
+    note: s.decided_at ? formatDateTime(s.decided_at) : undefined,
+    state: s.decision === "approve" ? "done" : s.decision ? "stopped"
+      : s.step === firstOpen && request.status === "in_approval" ? "current" : "waiting",
+  }));
+}
+
+function NeedLinesTable({ request }: { request: RequestDetail }) {
+  const priced = Number(request.amount) > 0;
   return (
-    <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 text-sm">{children}</dd>
+    <div className={table.wrap}>
+      <table className={table.table}>
+        <thead>
+          <tr>
+            <th className={table.th}>#</th>
+            <th className={table.th}>What</th>
+            <th className={`${table.th} ${table.num}`}>Qty</th>
+            <th className={table.th}>Unit</th>
+            {priced ? <th className={`${table.th} ${table.num}`}>Price if known</th> : null}
+            <th className={table.th}>Purchase order</th>
+          </tr>
+        </thead>
+        <tbody>
+          {request.lines.map((l) => (
+            <tr key={l.id}>
+              <td className={table.td}>{l.line_no}</td>
+              <td className={table.td}>{l.description}</td>
+              <td className={`${table.td} ${table.num}`}>{formatQty(l.qty)}</td>
+              <td className={table.td}>{l.unit ?? "—"}</td>
+              {priced ? <td className={`${table.td} ${table.num}`}>{Number(l.est_rate) > 0 ? formatINR(l.est_rate) : "—"}</td> : null}
+              <td className={table.td}>
+                {l.placement ? (
+                  <Link href={`/orders/${l.placement.po_id}`} className="text-primary hover:underline">
+                    {l.placement.po_number}{l.placement.po_status === "sent" ? " · sent" : ""}
+                  </Link>
+                ) : <span className="text-muted-foreground">Not ordered yet</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
+function SourceMessage({ request }: { request: RequestDetail }) {
+  if (!request.source_message) return null;
+  const whatsapp = request.source_channel === "whatsapp";
+  const Icon = whatsapp ? MessageCircle : Mail;
+  return (
+    <Panel title={whatsapp ? "Came in on WhatsApp" : "Came in by email"}>
+      <p className="whitespace-pre-wrap rounded-lg bg-ice-light px-3 py-2 text-sm text-heading">
+        <Icon className="mr-1.5 inline size-4 text-muted-foreground" aria-hidden />{request.source_message}
+      </p>
+      {request.entered_by_name ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Entered by {request.entered_by_name} for {request.requester_name}, who checked and submitted it.
+        </p>
+      ) : null}
+    </Panel>
+  );
+}
+
 function LinesTable({ request }: { request: RequestDetail }) {
+  if (isNeedFirst(request)) return <NeedLinesTable request={request} />;
   return (
     <div className={table.wrap}>
       <table className={table.table}>
@@ -265,7 +366,7 @@ function DecisionPanel({ request, onChange }: { request: RequestDetail; onChange
         <ErrorNotice message={error} />
         <div className="flex flex-wrap gap-2">
           <Button disabled={busy || !request.allowed.can_approve} onClick={() => decide("approve")}>
-            <CircleCheck aria-hidden /> Approve {formatINR(request.amount)}
+            <CircleCheck aria-hidden /> {Number(request.amount) > 0 ? `Approve ${formatINR(request.amount)}` : "Approve the need"}
           </Button>
           <Button variant="outline" disabled={busy} onClick={() => decide("return")}>
             <Undo2 aria-hidden /> Return to requester
@@ -351,9 +452,46 @@ export default function RequestPage() {
     }
   };
 
+  const needFirst = isNeedFirst(request);
+  const channelLabel = { form: "Orrfin form", whatsapp: "WhatsApp message", email: "Email" }[request.source_channel ?? "form"];
+  const details = (
+    <AsideCard title="Details" actions={request.allowed.edit && !editing
+      ? <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button> : undefined}>
+      <MetaList rows={needFirst ? [
+        { label: "Rough total", value: Number(request.amount) > 0 ? formatINR(request.amount) : "Priced by procurement" },
+        { label: "Needed by", value: formatDate(request.needed_by) },
+        { label: "Kind of thing", value: request.category_name },
+        { label: "Cost centre", value: request.cost_center || "—" },
+        { label: "Came in by", value: channelLabel },
+        { label: "Waiting on", value: request.waiting_on ?? "—" },
+      ] : [
+        { label: "Amount", value: <span className="text-base font-semibold text-heading">{formatINR(request.amount)}</span> },
+        { label: "Needed by", value: formatDate(request.needed_by) },
+        { label: "Category", value: request.category_name },
+        { label: "Cost centre", value: request.cost_center || "—" },
+        { label: "Vendor", value: request.vendor_name ?? (request.suggested_vendor_name ? `${request.suggested_vendor_name} (suggested)` : "—") },
+        { label: "Waiting on", value: request.waiting_on ?? "—" },
+      ]} />
+      <div className="mt-3 space-y-2.5 border-t border-border pt-3 text-sm">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Requested by</span>
+          <PersonCell name={request.requester_name} size="xs" />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">{needFirst ? "Procurement" : "Buyer"}</span>
+          {request.buyer_name ? <PersonCell name={request.buyer_name} size="xs" /> : <span className="text-muted-foreground">Not assigned</span>}
+        </div>
+      </div>
+      {request.allowed.submit ? (
+        <Button className="mt-4 w-full" onClick={submit}><Send aria-hidden /> {needFirst ? "Send to my manager" : "Submit for approval"}</Button>
+      ) : null}
+    </AsideCard>
+  );
+
   return (
     <>
       <PageHeader
+        meta={<BackLink href="/requests" label="Requests" />}
         title={`${requestNumber(request.number)} · ${request.title}`}
         description={`${request.category_name} · requested by ${request.requester_name}`}
         actions={
@@ -365,84 +503,80 @@ export default function RequestPage() {
           </div>
         }
       />
-      <div className="flex flex-col gap-6">
+      <div className="mb-6 rounded-xl border border-border bg-white px-4 py-3 shadow-raised">
         <StageTimeline request={request} />
-
-        {request.ready_for_po ? (
-          <p className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm font-medium text-success">
-            <PackageCheck className="size-4" aria-hidden />
-            Approved and ready for PO. Orrfin drafts the purchase order in the active ERP; a person submits it there.
-          </p>
-        ) : null}
-        <ErpSyncPanel sync={request.po_sync} note={request.po_sync_note} what="PO" onChange={() => void reload()} />
-        {request.status === "returned" ? (
-          <p className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
-            Returned: {request.current_steps.find((s) => s.decision === "return")?.reason ?? "see the audit trail"}
-          </p>
-        ) : null}
-        <ErrorNotice message={actionError} />
-
-        {editing ? (
-          <RequestForm
-            initial={request}
-            submitLabel="Save changes"
-            onSave={async (values) => {
-              setData(await patch<RequestDetail>(`/requests/${request.id}`, values));
-              setEditing(false);
-            }}
-          />
-        ) : (
-          <>
-            <Panel
-              title="Details"
-              actions={
-                request.allowed.edit || request.allowed.submit ? (
-                  <div className="flex gap-2">
-                    {request.allowed.edit ? <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button> : null}
-                    {request.allowed.submit ? <Button size="sm" onClick={submit}><Send aria-hidden /> Submit</Button> : null}
-                  </div>
-                ) : null
-              }
-            >
-              <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Detail label="Amount"><span className="text-base font-semibold text-heading">{formatINR(request.amount)}</span></Detail>
-                <Detail label="Needed by">{formatDate(request.needed_by)}</Detail>
-                <Detail label="Cost centre">{request.cost_center || "—"}</Detail>
-                <Detail label="Buyer">{request.buyer_name ?? "Not assigned"}</Detail>
-                <Detail label="Vendor">{request.vendor_name ?? (request.suggested_vendor_name ? `${request.suggested_vendor_name} (suggested)` : "—")}</Detail>
-                <Detail label="Waiting on">{request.waiting_on ?? "—"}</Detail>
-                <Detail label="Justification">{request.justification || "—"}</Detail>
-              </dl>
-            </Panel>
-            <LinesTable request={request} />
-          </>
-        )}
-
-        {request.allowed.assign_buyer ? <AssignPanel request={request} onChange={setData} /> : null}
-        {request.allowed.buyer_edit ? <BuyerPanel key={request.updated_at} request={request} onChange={setData} /> : null}
-        {request.status === "in_approval" ? <RemindersPanel requestId={request.id} version={request.updated_at} /> : null}
-        {["with_buyer", "in_approval"].includes(request.status) && request.cost_center ? (
-          <BudgetNotice query={`request_id=${request.id}&v=${encodeURIComponent(request.updated_at)}`} />
-        ) : null}
-        {request.allowed.decide_step ? <DecisionPanel request={request} onChange={setData} /> : null}
-
-        {request.current_steps.length > 0 ? (
-          <Panel title={`Approval chain${request.approval_round > 1 ? ` (round ${request.approval_round})` : ""}`}>
-            <ol className="flex flex-col gap-2">
-              {request.current_steps.map((s) => (
-                <li key={s.step} className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="font-medium text-heading">Step {s.step}: {stepName(s)}</span>
-                  <span className="text-muted-foreground">
-                    {s.decision === null ? "· waiting" : `· ${s.decision === "approve" ? "approved" : s.decision === "reject" ? "rejected" : "returned"} by ${s.approver_name} on ${formatDateTime(s.decided_at!)}`}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </Panel>
-        ) : null}
-
-        {request.timeline.length ? <AuditTrail request={request} /> : <EmptyState>No events yet.</EmptyState>}
       </div>
+      <DetailLayout
+        aside={
+          <>
+            {details}
+            {request.current_steps.length > 0 ? (
+              <AsideCard title={`Approval chain${request.approval_round > 1 ? ` · round ${request.approval_round}` : ""}`}>
+                <Chain steps={chainSteps(request)} />
+              </AsideCard>
+            ) : null}
+          </>
+        }
+        main={
+          <>
+            {request.ready_for_po ? (
+              <p className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm font-medium text-success">
+                <PackageCheck className="size-4" aria-hidden />
+                Approved and ready for PO. Orrfin drafts the purchase order in the active ERP; a person submits it there.
+              </p>
+            ) : null}
+            <ErpSyncPanel sync={request.po_sync} note={request.po_sync_note} what="PO" onChange={() => void reload()} />
+            {request.status === "returned" ? (
+              <p className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
+                Returned: {request.current_steps.find((s) => s.decision === "return")?.reason ?? "see the audit trail"}
+              </p>
+            ) : null}
+            <ErrorNotice message={actionError} />
+            {request.status === "with_buyer" && needFirst ? (
+              <p className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm font-medium text-success">
+                <PackageCheck className="size-4" aria-hidden />
+                Approved by the manager. Procurement now chooses the vendor and price and puts it on a purchase order.
+              </p>
+            ) : null}
+            {request.status === "po_open" && needFirst ? (
+              <p className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm font-medium text-success">
+                <PackageCheck className="size-4" aria-hidden /> Ordered: the purchase order has been sent to the vendor.
+              </p>
+            ) : null}
+            <SourceMessage request={request} />
+
+            {request.allowed.decide_step ? <DecisionPanel request={request} onChange={setData} /> : null}
+            {request.allowed.assign_buyer ? <AssignPanel request={request} onChange={setData} /> : null}
+            {request.allowed.buyer_edit ? <BuyerPanel key={request.updated_at} request={request} onChange={setData} /> : null}
+
+            {editing ? (
+              <RequestForm
+                initial={request}
+                needFirst={needFirst}
+                submitLabel="Save changes"
+                onSave={async (values) => {
+                  setData(await patch<RequestDetail>(`/requests/${request.id}`, toPayload(values)));
+                  setEditing(false);
+                }}
+              />
+            ) : (
+              <>
+                {request.justification ? (
+                  <Panel title="Why it's needed"><p className="text-sm leading-relaxed text-foreground">{request.justification}</p></Panel>
+                ) : null}
+                <LinesTable request={request} />
+              </>
+            )}
+
+            {request.status === "in_approval" ? <RemindersPanel requestId={request.id} version={request.updated_at} /> : null}
+            {["with_buyer", "in_approval"].includes(request.status) && request.cost_center ? (
+              <BudgetNotice query={`request_id=${request.id}&v=${encodeURIComponent(request.updated_at)}`} />
+            ) : null}
+
+            {request.timeline.length ? <AuditTrail request={request} /> : <EmptyState>No events yet.</EmptyState>}
+          </>
+        }
+      />
     </>
   );
 }

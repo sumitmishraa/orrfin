@@ -214,10 +214,12 @@ def status_for(db: Session, row: ErpOutbox | None) -> dict[str, Any] | None:
             if spec_for(connection.system).file_based and row.state == "CONFIRMED" else None}
 
 
-def outbox_for(db: Session, *, invoice_id: uuid.UUID | None = None,
-               request_id: uuid.UUID | None = None) -> ErpOutbox | None:
+def outbox_for(db: Session, *, invoice_id: uuid.UUID | None = None, request_id: uuid.UUID | None = None,
+               order_po_id: uuid.UUID | None = None) -> ErpOutbox | None:
     if invoice_id is not None:
         return db.scalar(select(ErpOutbox).where(ErpOutbox.invoice_id == invoice_id))
+    if order_po_id is not None:
+        return db.scalar(select(ErpOutbox).where(ErpOutbox.order_po_id == order_po_id))
     return db.scalar(select(ErpOutbox).where(ErpOutbox.request_id == request_id))
 
 

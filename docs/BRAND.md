@@ -67,5 +67,11 @@ Source: the founder's palette (26 Sep 2026). Step 1 turns this into the app's de
 }
 ```
 
-Fonts: not specified yet. Step 1 uses Inter; change it here if you have brand fonts.
+Fonts (Step 41): Hanken Grotesk for the whole app, page titles included; Newsreader (serif) only for the
+headline on the sign-in and join pages. Numbers use tabular figures.
+
+Layout (Step 41): one navy sidebar (sections → product areas, Settings and the signed-in person at the
+bottom), a white header with the area's pages as underline tabs, ice-light workspace, white cards.
+Lists use the shared DataTable; avatars use eight muted initials colours (`--orffin-avatar-*`), never
+for status. Status is a pill with an icon and words. No gradients, glows, emoji or decorative shapes.
 Logo: not supplied yet. Put the file in `frontend/public/` and write its name here.

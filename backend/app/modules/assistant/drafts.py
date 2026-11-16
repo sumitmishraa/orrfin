@@ -156,7 +156,7 @@ def draft_request(db: Session, user: User, text: str, drafter: Any) -> dict[str,
     all_priced = priced == len(lines)
     if not all_priced:
         warnings.append("Some lines have no past price. Enter those rates; the amount and approvals below use the priced lines only.")
-    chain = procurement.chain_preview(db, user.org_id, category.id, amount)
+    chain = procurement.chain_preview(db, user.org_id, category.id, amount, requester_id=user.id)
     cost_center = draft.cost_center.strip().upper()[:60]
     return {
         "available": True,

@@ -74,19 +74,22 @@ def pull_from_erp(db: Session, org_id: uuid.UUID, adapter: ErpAdapter,
         vendor = vendors.get(record.vendor_ref)
         # A PO Orrfin drafted carries orrfin_ref = its outbox idempotency key (§8), which links
         # it back to the purchase request.
-        request_id = None
+        request_id = order_po_id = None
         if record.orrfin_ref:
             # Some ERPs hold only a prefix of the 64-hex key (Business Central: 35-character field).
             key_match = (ErpOutbox.idempotency_key == record.orrfin_ref if len(record.orrfin_ref) == 64
                          else ErpOutbox.idempotency_key.startswith(record.orrfin_ref))
-            request_id = db.scalar(select(ErpOutbox.request_id).where(
-                ErpOutbox.org_id == org_id, ErpOutbox.doc_type == "purchase_order", key_match))
+            # Step 42: the key may belong to a request (one PO each) or to an Orrfin PO covering several.
+            linked = db.execute(select(ErpOutbox.request_id, ErpOutbox.order_po_id).where(
+                ErpOutbox.org_id == org_id, ErpOutbox.doc_type == "purchase_order", key_match)).first()
+            if linked is not None:
+                request_id, order_po_id = linked
         values = {
             "erp_modified": record.modified, "vendor_id": vendor.id if vendor else None,
             "po_date": record.po_date, "schedule_date": record.schedule_date, "status": record.status,
             "currency": record.currency, "net_total": record.net_total, "tax_total": record.tax_total,
             "grand_total": record.grand_total, "origin": "orrfin" if record.orrfin_ref else "erp",
-            "request_id": request_id, "po_number": record.po_number,
+            "request_id": request_id, "order_po_id": order_po_id, "po_number": record.po_number,
         }
         if request_id is not None:
             # A person submitted the draft Orrfin made: the request's PO is now open (§8 PO lifecycle).

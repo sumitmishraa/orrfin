@@ -8,7 +8,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import { ErrorNotice, Loading, PageHeader } from "@/components/page";
+import { ErrorNotice, PageHeader } from "@/components/page";
 import { RequestTable } from "@/components/request-table";
 import { useMe } from "@/components/session";
 import { buttonVariants } from "@/components/ui/button";
@@ -33,7 +33,7 @@ export default function RequestsPage() {
         }
       />
       {canSeeAll ? (
-        <div role="tablist" aria-label="Which requests" className="mb-4 inline-flex rounded-lg border border-border bg-white p-1">
+        <div role="tablist" aria-label="Which requests" className="mb-4 inline-flex rounded-lg border border-border bg-white p-1 shadow-raised">
           {(["all", "mine"] as const).map((s) => (
             <button key={s} role="tab" aria-selected={scope === s} type="button" onClick={() => setScope(s)}
                     className={`rounded-md px-3 py-1.5 text-sm ${scope === s ? "bg-primary text-primary-foreground" : "text-heading hover:bg-ice"}`}>
@@ -43,7 +43,7 @@ export default function RequestsPage() {
         </div>
       ) : null}
       <ErrorNotice message={error} />
-      {loading ? <Loading /> : <RequestTable rows={data ?? []} empty="No requests yet. Start with “New request”." />}
+      <RequestTable rows={data} loading={loading} empty={<>No requests yet. <Link href="/requests/new" className="text-primary hover:underline">Start a new request</Link>.</>} />
     </>
   );
 }

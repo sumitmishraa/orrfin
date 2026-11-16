@@ -4,11 +4,12 @@
  * One purchase order (PROMPTS Step 4): ordered vs received quantity per line, taxes and the
  * goods receipts behind the received figures. Read-only: ERPNext owns POs and receipts (§2).
  */
-import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, CircleCheck, CircleDot, CircleMinus } from "lucide-react";
+import { CircleCheck, CircleDot, CircleMinus, PackageCheck } from "lucide-react";
 
+import { AsideCard, BackLink, DetailLayout } from "@/components/detail";
 import { ErrorNotice, Loading, PageHeader, Panel, table } from "@/components/page";
+import { MetaList, PersonCell } from "@/components/ui/display";
 import { formatDate, formatINR, formatQty } from "@/lib/format";
 import type { PoDetail, PoLine } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
@@ -32,17 +33,19 @@ export default function PurchaseOrderPage() {
   if (loading) return <Loading />;
   if (error || !po) return <ErrorNotice message={error ?? "Purchase order not found."} />;
 
+  const received = po.lines.filter((l) => Number(l.qty_received) >= Number(l.qty)).length;
   return (
     <>
-      <Link href="/pos" className="mb-3 inline-flex items-center gap-1 text-sm text-primary hover:underline">
-        <ArrowLeft className="size-4" aria-hidden /> All purchase orders
-      </Link>
       <PageHeader
+        meta={<BackLink href="/pos" label="Purchase orders" />}
         title={po.erp_ref}
-        description={`${po.vendor_name ?? "Unknown vendor"} · GSTIN ${po.vendor_gstin ?? "—"} · ordered ${formatDate(po.po_date)} · due ${formatDate(po.schedule_date)}`}
+        description={`${po.vendor_name ?? "Unknown vendor"} · read-only mirror from the ERP, which owns POs and receipts`}
       />
-      <div className="flex flex-col gap-6">
-        <div className={table.wrap}>
+      <DetailLayout
+        main={
+          <Panel title={`Lines · ${received} of ${po.lines.length} fully received`}>
+            <div className="-m-4">
+        <div className="overflow-x-auto">
           <table className={table.table}>
             <thead>
               <tr>
@@ -77,30 +80,44 @@ export default function PurchaseOrderPage() {
             </tbody>
           </table>
         </div>
-        <div className="grid gap-6 md:grid-cols-2">
-          <Panel title="Totals">
-            <dl className="grid grid-cols-2 gap-y-1 text-sm">
-              <dt className="text-muted-foreground">Net total</dt><dd className="text-right tabular-nums">{formatINR(po.net_total)}</dd>
-              <dt className="text-muted-foreground">GST</dt><dd className="text-right tabular-nums">{formatINR(po.tax_total)}</dd>
-              <dt className="font-semibold text-heading">Grand total</dt><dd className="text-right font-semibold tabular-nums text-heading">{formatINR(po.grand_total)}</dd>
-            </dl>
+            </div>
           </Panel>
-          <Panel title="Goods receipts">
-            {po.receipts.length ? (
-              <ul className="flex flex-col gap-1 text-sm">
-                {po.receipts.map((r) => (
-                  <li key={r.erp_ref} className="flex justify-between">
-                    <span className="font-medium">{r.erp_ref}</span>
-                    <span className="text-muted-foreground">{formatDate(r.posting_date)}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground">Nothing received yet.</p>
-            )}
-          </Panel>
-        </div>
-      </div>
+        }
+        aside={
+          <>
+            <AsideCard title="Details">
+              <div className="py-2"><PersonCell name={po.vendor_name ?? "Unknown vendor"} detail={po.vendor_gstin ? `GSTIN ${po.vendor_gstin}` : "No GSTIN"} /></div>
+              <MetaList rows={[
+                { label: "Ordered", value: formatDate(po.po_date) },
+                { label: "Due", value: formatDate(po.schedule_date) },
+                { label: "Currency", value: po.currency },
+                { label: "Last changed in ERP", value: formatDate(po.erp_modified) },
+              ]} />
+            </AsideCard>
+            <AsideCard title="Totals">
+              <MetaList rows={[
+                { label: "Net total", value: formatINR(po.net_total) },
+                { label: "GST", value: formatINR(po.tax_total) },
+                { label: "Grand total", value: <span className="text-base font-semibold text-heading">{formatINR(po.grand_total)}</span> },
+              ]} />
+            </AsideCard>
+            <AsideCard title="Goods receipts">
+              {po.receipts.length ? (
+                <ul className="divide-y divide-border/70 text-sm">
+                  {po.receipts.map((r) => (
+                    <li key={r.erp_ref} className="flex items-center justify-between gap-3 py-2.5">
+                      <span className="flex items-center gap-2 font-medium"><PackageCheck className="size-4 text-success" aria-hidden />{r.erp_ref}</span>
+                      <span className="text-muted-foreground">{formatDate(r.posting_date)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="py-2 text-sm text-muted-foreground">Nothing received yet.</p>
+              )}
+            </AsideCard>
+          </>
+        }
+      />
     </>
   );
 }
