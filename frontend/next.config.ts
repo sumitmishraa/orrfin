@@ -43,6 +43,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Development only: lets someone open the laptop's dev server through a free Cloudflare quick
+  // tunnel (https://<words>.trycloudflare.com). Without it Next blocks the tunnel's requests.
+  allowedDevOrigins: ["*.trycloudflare.com"],
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${apiInternalUrl}/:path*` }];
   },

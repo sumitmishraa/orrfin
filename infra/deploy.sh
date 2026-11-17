@@ -53,8 +53,15 @@ echo "Deploying $(git describe --tags --always) ($(git log -1 --format=%cd --dat
 if [[ ! -f "$ENV_FILE" ]]; then
   say "Writing .env.production with new random secrets (first run only)"
   if [[ -z "${SITE_ADDRESS:-}" ]]; then
-    token=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
-    public_ip=$(curl -fsS -H "X-aws-ec2-metadata-token: $token" http://169.254.169.254/latest/meta-data/public-ipv4)
+    # AWS tells the server its public address; other clouds (Oracle, Google) don't answer this,
+    # so fall back to asking a public "what is my IP" service.
+    token=$(curl -fsS -m 3 -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 60" || true)
+    public_ip=$( [[ -n "$token" ]] && curl -fsS -m 3 -H "X-aws-ec2-metadata-token: $token" http://169.254.169.254/latest/meta-data/public-ipv4 || true)
+    [[ -z "$public_ip" ]] && public_ip=$(curl -fsS -m 10 https://checkip.amazonaws.com | tr -d '[:space:]')
+    if [[ ! "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      echo "Could not find this server's public IP. Run again as: SITE_ADDRESS=1-2-3-4.sslip.io bash infra/deploy.sh" >&2
+      exit 1
+    fi
     SITE_ADDRESS="${public_ip//./-}.sslip.io"
   fi
   db_password=$(openssl rand -hex 24)
