@@ -52,7 +52,13 @@ echo "Deploying $(git describe --tags --always) ($(git log -1 --format=%cd --dat
 # --- 4. Settings with secrets (first run only; never committed) --------------------------------
 if [[ ! -f "$ENV_FILE" ]]; then
   say "Writing .env.production with new random secrets (first run only)"
-  if [[ -z "${SITE_ADDRESS:-}" ]]; then
+  if [[ "${BEHIND_CLOUDFLARE:-}" == "1" ]]; then
+    # A Cloudflare Tunnel brings visitors in over HTTPS and hands them to Caddy on port 80, so Caddy
+    # serves plain HTTP for any host name and needs no certificate. PUBLIC_HOST is the address
+    # people open (demo.yourdomain.com); without a domain it is a trycloudflare.com address.
+    SITE_ADDRESS=":80"
+    PUBLIC_HOST="${PUBLIC_HOST:-your-link.trycloudflare.com}"
+  elif [[ -z "${SITE_ADDRESS:-}" ]]; then
     # AWS tells the server its public address; other clouds (Oracle, Google) don't answer this,
     # so fall back to asking a public "what is my IP" service.
     token=$(curl -fsS -m 3 -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 60" || true)
@@ -64,6 +70,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
     fi
     SITE_ADDRESS="${public_ip//./-}.sslip.io"
   fi
+  PUBLIC_HOST="${PUBLIC_HOST:-$SITE_ADDRESS}"
   db_password=$(openssl rand -hex 24)
   # A Fernet key: 32 random bytes, URL-safe base64 (ADR 0006).
   secret_key=$(openssl rand -base64 32 | tr '+/' '-_')
@@ -73,8 +80,8 @@ if [[ ! -f "$ENV_FILE" ]]; then
 # Orrfin demo server settings. Written by infra/deploy.sh. Keep this file on the server only.
 APP_ENV=production
 SITE_ADDRESS=$SITE_ADDRESS
-PUBLIC_WEB_URL=https://$SITE_ADDRESS
-CORS_ORIGINS=["https://$SITE_ADDRESS"]
+PUBLIC_WEB_URL=https://$PUBLIC_HOST
+CORS_ORIGINS=["https://$PUBLIC_HOST"]
 SESSION_COOKIE_SECURE=true
 
 POSTGRES_PASSWORD=$db_password
@@ -110,13 +117,14 @@ say "Loading the demo data (safe to repeat)"
 say "Starting the API, worker, web app and HTTPS"
 "${COMPOSE[@]}" up -d --remove-orphans
 
-site=$(grep '^SITE_ADDRESS=' "$ENV_FILE" | cut -d= -f2)
+site=$(grep '^PUBLIC_WEB_URL=' "$ENV_FILE" | cut -d= -f2 | sed 's#^https://##')
 password=$(grep '^ORRFIN_DEMO_PASSWORD=' "$ENV_FILE" | cut -d= -f2)
 say "Done"
 cat <<EOF
 Demo link:      https://$site
 Sign in as:     riya.requester@demo.orrfin.ai (or arjun.buyer, neha.approver, vikram.finance, anita.admin)
 Password:       $password
-The HTTPS certificate is issued on the first visit; if the page does not load, wait a minute and retry.
+Behind Cloudflare the link works once the tunnel is running; otherwise the HTTPS certificate is
+issued on the first visit, so if the page does not load, wait a minute and retry.
 Logs:           sudo docker compose -f infra/docker-compose.prod.yml --env-file .env.production logs -f api
 EOF
