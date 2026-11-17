@@ -45,6 +45,28 @@ http://localhost:3001 instead.
 
 **Something failed?** Logs are in `.dev\api.err.log`, `.dev\worker.err.log` and `.dev\web.err.log`.
 
+## How to run on a Mac (or Linux)
+
+You need only **Docker Desktop** (docker.com → Download for Mac, pick Apple chip or Intel chip) and git.
+
+1. Get the code (branch `platform-v3`):
+   ```
+   git clone --branch platform-v3 https://github.com/sumitmishraa/orrfin.git
+   cd orrfin
+   ```
+2. Open Docker Desktop and wait until it says *Engine running*.
+3. Start everything (the first build takes 5–10 minutes):
+   ```
+   ./scripts/demo-local.sh
+   ```
+4. Open **https://localhost**. The browser warns about the certificate the first time:
+   - Chrome: **Advanced → Proceed to localhost**;
+   - Safari: **Show Details → visit this website**.
+5. Sign in with the demo logins below.
+6. Stop with `./scripts/demo-local.sh --stop`, or start again from scratch with `./scripts/demo-local.sh --reset`.
+
+This runs the same containers as the AWS server. To read or change the code, open the folder in VS Code or Cursor. To run the backend tests on a Mac, see "Tests" below: they need Python 3.12 and the local Postgres from `infra/docker-compose.yml`.
+
 ## Demo logins (synthetic, local demo only)
 
 Every demo account uses the password **`Orrfin@Demo2026`**. The people and company are fictional.

@@ -136,10 +136,10 @@ password is new and random: share it only with the people you demo to. It is not
 
 ## Part H. Optional: switch on the AI
 
-Without a key the demo works, but these features say "unavailable":
-- invoice reading by AI (the sample invoices still use their stored answers);
-- the intake agent;
-- the assistant.
+Without a key the demo works, but these features change:
+- **Invoice reading:** an uploaded invoice goes to *manual entry* after 3 tries. A person types the fields; matching and approval then work normally.
+- **The intake agent and the assistant** say "unavailable".
+- **The WhatsApp/email reader** falls back to a simple "number + item" reading.
 
 1. Get a key at **https://aistudio.google.com/apikey**.
 2. On the server, open the settings file:
